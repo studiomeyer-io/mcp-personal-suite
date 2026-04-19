@@ -26,43 +26,8 @@ import {
   saveConfig,
   generateAuthUrl,
   exchangeCode,
-  preloadTenantEmailConfig,
-  invalidateTenantEmailConfig,
   type OAuthConfig,
 } from './oauth2.js';
-import { getCurrentTenantId } from '../../lib/tenant-storage.js';
-import { loadConfig as loadSuiteConfig, saveConfig as saveSuiteConfig } from '../../lib/config.js';
-
-// ─── Tenant Config Preloader ─────────────────────
-
-/** Load tenant email config from DB and preload sync cache. Call at start of every email tool. */
-async function preloadForTenant(): Promise<void> {
-  const tenantId = getCurrentTenantId();
-  if (!tenantId) return; // stdio mode — oauth2.loadConfig reads file/env directly
-
-  const suiteConfig = await loadSuiteConfig();
-  if (suiteConfig.email) {
-    // Map SuiteConfig.EmailConfig → OAuthConfig (both structures are compatible)
-    preloadTenantEmailConfig(tenantId, suiteConfig.email as unknown as OAuthConfig);
-  } else {
-    preloadTenantEmailConfig(tenantId, null);
-  }
-}
-
-/** Save email config — in SaaS mode saves to tenant DB via lib/config. */
-async function saveForTenant(config: OAuthConfig): Promise<void> {
-  const tenantId = getCurrentTenantId();
-  if (tenantId) {
-    const current = await loadSuiteConfig();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (current as any).email = config;
-    await saveSuiteConfig(current);
-    invalidateTenantEmailConfig(tenantId);
-    preloadTenantEmailConfig(tenantId, config);
-  } else {
-    saveConfig(config); // filesystem (stdio mode)
-  }
-}
 
 // ─── Response Helpers ───────────────────────────
 
@@ -89,37 +54,7 @@ function errorResponse(message: string, code?: string): ToolResponse {
 
 // ─── Tool Registration ──────────────────────────
 
-/**
- * Wraps server.tool() to auto-preload tenant config before every handler call.
- * This ensures email-client.ts loadConfig() sees the right tenant.
- * Only activates in SaaS mode (SUITE_DATABASE_URL set).
- */
-function wrapServerWithPreload(server: McpServer): McpServer {
-  // Only wrap in SaaS mode
-  if (!process.env.SUITE_DATABASE_URL) return server;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const originalTool = (server as any).tool.bind(server);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (server as any).tool = function (...args: unknown[]) {
-    const handlerIdx = args.length - 1;
-    const originalHandler = args[handlerIdx];
-    if (typeof originalHandler === 'function') {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      args[handlerIdx] = async (...handlerArgs: unknown[]) => {
-        await preloadForTenant();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return (originalHandler as (...a: unknown[]) => any)(...handlerArgs);
-      };
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (originalTool as (...a: unknown[]) => any)(...args);
-  };
-  return server;
-}
-
 export function registerEmailTools(server: McpServer): void {
-  server = wrapServerWithPreload(server);
   // ═══════════════════════════════════════════════
   // SETUP TOOLS (3)
   // ═══════════════════════════════════════════════
@@ -130,8 +65,7 @@ export function registerEmailTools(server: McpServer): void {
     'Check email configuration status. Call this first to see if email is set up.',
     {},
     async () => {
-      // preload already called by wrapServerWithPreload in SaaS mode
-      const config = loadConfig();
+const config = loadConfig();
       if (!config) {
         return jsonResponse({
           configured: false,
@@ -195,7 +129,7 @@ export function registerEmailTools(server: McpServer): void {
         smtpPass: args.smtpPass,
       };
 
-      await saveForTenant(config);
+      saveConfig(config);
       invalidateTransporterCache();
 
       return jsonResponse({
@@ -239,13 +173,12 @@ export function registerEmailTools(server: McpServer): void {
         const tokens = await exchangeCode(args.provider, args.code, args.clientId, args.clientSecret, redirectUri);
 
         // Auto-save tokens to config file (never leak to LLM context)
-        // preload already called by wrapServerWithPreload in SaaS mode
-        const existingConfig = loadConfig();
+    const existingConfig = loadConfig();
         if (existingConfig) {
           existingConfig.accessToken = tokens.access_token;
           existingConfig.accessTokenExpiry = Date.now() + tokens.expires_in * 1000;
           if (tokens.refresh_token) existingConfig.refreshToken = tokens.refresh_token;
-          await saveForTenant(existingConfig);
+          saveConfig(existingConfig);
         }
 
         return jsonResponse({

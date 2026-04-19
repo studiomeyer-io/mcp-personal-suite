@@ -10,7 +10,6 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { logger } from './logger.js';
-import { getCurrentTenantId } from './tenant-storage.js';
 import { encryptConfig, decryptConfig } from './crypto.js';
 
 // ─── Config Types ────────────────────────────────────

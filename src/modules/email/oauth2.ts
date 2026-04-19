@@ -15,7 +15,6 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync }
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { getCurrentTenantId } from '../../lib/tenant-storage.js';
 
 // ─── Types ───────────────────────────────────────
 
@@ -131,40 +130,7 @@ function decrypt(data: string, key: Buffer): string {
 
 // ─── Email Config CRUD ─────────────────────────
 
-// ─── Per-Tenant Config Cache (SaaS Mode) ───────────
-
-const tenantConfigCache = new Map<string, { config: OAuthConfig | null; expiresAt: number }>();
-const TENANT_CACHE_TTL = 60_000; // 60s
-
-/**
- * Preload a tenant's email config into the sync cache.
- * Called from email tool handlers before calling email-client functions.
- */
-export function preloadTenantEmailConfig(tenantId: string, config: OAuthConfig | null): void {
-  tenantConfigCache.set(tenantId, { config, expiresAt: Date.now() + TENANT_CACHE_TTL });
-}
-
-export function invalidateTenantEmailConfig(tenantId: string): void {
-  tenantConfigCache.delete(tenantId);
-}
-
-// Cleanup stale entries every 2 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [tid, entry] of tenantConfigCache) {
-    if (now > entry.expiresAt) tenantConfigCache.delete(tid);
-  }
-}, 120_000).unref();
-
 export function loadConfig(): OAuthConfig | null {
-  // SaaS mode: read from per-tenant sync cache (preloaded by tool handler)
-  const tenantId = getCurrentTenantId();
-  if (tenantId) {
-    const cached = tenantConfigCache.get(tenantId);
-    if (cached && Date.now() < cached.expiresAt) return cached.config;
-    return null; // No preload? Config not available for this tenant
-  }
-
   // First check env vars (highest priority)
   if (process.env['OAUTH2_PROVIDER'] && process.env['OAUTH2_EMAIL']) {
     return {
@@ -294,22 +260,7 @@ export async function refreshAccessToken(config: OAuthConfig): Promise<string> {
   config.accessTokenExpiry = Date.now() + data.expires_in * 1000;
   if (data.refresh_token) config.refreshToken = data.refresh_token;
 
-  // SaaS mode: persist refreshed token to tenant DB
-  const tenantId = getCurrentTenantId();
-  if (tenantId) {
-    preloadTenantEmailConfig(tenantId, config);
-    try {
-      const libConfig = await import('../../lib/config.js');
-      const suite = await libConfig.loadConfig();
-      (suite as Record<string, unknown>).email = config;
-      await libConfig.saveConfig(suite);
-    } catch {
-      // Non-blocking — in-memory cache is updated, next request can retry DB save
-    }
-  } else {
-    // Stdio mode: save to filesystem
-    saveConfig(config);
-  }
+  saveConfig(config);
   return data.access_token;
 }
 

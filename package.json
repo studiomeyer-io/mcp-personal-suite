@@ -1,6 +1,6 @@
 {
   "name": "mcp-personal-suite",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Local-first personal productivity MCP server for Claude, Cursor, and any MCP client. Email, Calendar, Messaging, Search, Image Generation. BYOK, no cloud, no signup.",
   "type": "module",
   "main": "dist/server.js",

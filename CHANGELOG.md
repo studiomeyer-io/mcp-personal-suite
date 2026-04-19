@@ -2,6 +2,31 @@
 
 All notable changes to mcp-personal-suite are documented here.
 
+## [0.5.2] - 2026-04-19
+
+### Added
+- **`tests/crypto.test.ts`** — 16 unit tests for the credential encryption
+  pipeline: AES-256-GCM encrypt/decrypt roundtrip, random IV per call,
+  idempotent re-encryption, plaintext pass-through (backward compat),
+  GCM auth-tag tamper detection, malformed payload handling, sensitive-field
+  pattern matching, recursive config encryption, key-stability across
+  module reloads. Regression coverage for the v0.5.1 security hardening.
+
+### Changed
+- **Removed `tenant-storage.ts` and all 17 `getCurrentTenantId()` call sites.**
+  This code was dead in single-user mode (always returned `undefined`,
+  triggering the `|| '_default'` fallback) but created kognitive load for
+  contributors wondering what tenant context was for. Files cleaned:
+  `src/lib/tenant-storage.ts` (deleted), `src/lib/config.ts`,
+  `src/modules/email/email-client.ts`, `src/modules/email/index.ts`
+  (removed `wrapServerWithPreload`, `preloadForTenant`, `saveForTenant`),
+  `src/modules/email/oauth2.ts` (removed tenant config cache + SaaS
+  refresh branch), `src/modules/system/index.ts` (removed tenant-aware
+  storage notes). 372/372 tests still green.
+
+### Dev
+- TypeScript strict build clean, total `src/` LOC: 9,748.
+
 ## [0.5.1] - 2026-04-19
 
 ### Security

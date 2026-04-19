@@ -24,7 +24,6 @@ import {
 } from '../../lib/config.js';
 import { logger } from '../../lib/logger.js';
 import { getSuiteGuide } from './guide.js';
-import { getCurrentTenantId } from '../../lib/tenant-storage.js';
 
 // ─── Registration ────────────────────────────────────
 
@@ -67,10 +66,7 @@ function registerSuiteStatus(server: McpServer): void {
     async () => {
       try {
         const status = await getModuleStatus();
-        const tenantId = getCurrentTenantId();
-        const configPath = tenantId
-          ? `cloud database (tenant ${tenantId.slice(0, 8)})`
-          : getConfigPath();
+        const configPath = getConfigPath();
 
         // First-time detection: NO modules configured
         const anyConfigured = status.email.configured || status.calendar.configured ||
@@ -376,10 +372,7 @@ function registerSuiteSetup(server: McpServer): void {
         await saveConfig(config);
 
         // Trust signal: tell user where credentials are stored
-        const tenantId = getCurrentTenantId();
-        const storageNote = tenantId
-          ? 'Your credentials are stored encrypted in the EU tenant database (Supabase Frankfurt). Only your account can access them.'
-          : `Your credentials are stored in ${getConfigPath()} (owner-read-only, permissions 600). No data is sent to external servers.`;
+        const storageNote = `Your credentials are stored in ${getConfigPath()} (owner-read-only, permissions 0600, AES-256-GCM encrypted at rest). No data is sent to external servers.`;
 
         const successMsg = setupNote
           ? `${setupNote}\n\n---\nModule "${moduleName}" configured successfully. ${storageNote}\n\nRun suite_health to test the connection.`
@@ -942,13 +935,10 @@ function registerSuiteDelete(server: McpServer): void {
 
         await saveConfig(config);
 
-        const tenantId = getCurrentTenantId();
-        const where = tenantId ? 'tenant database' : getConfigPath();
-
         return {
           content: [{
             type: 'text' as const,
-            text: `Deleted: ${deleted.join(', ')}. All credentials removed from ${where}. Run suite_status to verify.`,
+            text: `Deleted: ${deleted.join(', ')}. All credentials removed from ${getConfigPath()}. Run suite_status to verify.`,
           }],
         };
       } catch (err) {

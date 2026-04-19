@@ -23,7 +23,6 @@ import {
   type OAuthConfig,
 } from './oauth2.js';
 import { logger } from '../../lib/logger.js';
-import { getCurrentTenantId } from '../../lib/tenant-storage.js';
 
 // ─── HTML-to-Text Fallback ──────────────────────
 
@@ -204,7 +203,7 @@ async function acquireImapConnection(
 ): Promise<{ client: ImapFlow; release: () => void }> {
   cleanPool();
 
-  const tenantKey = getCurrentTenantId() || '_default';
+  const tenantKey = '_default';
 
   // Try to reuse an idle connection belonging to this tenant
   const idle = imapPool.find(c => !c.inUse && c.alive && c.tenantKey === tenantKey);
@@ -451,7 +450,7 @@ const transporterCache = new Map<string, Transporter>();
 
 /** Clear cached SMTP transporter (call after config changes). */
 export function invalidateTransporterCache(): void {
-  const key = getCurrentTenantId() || '_default';
+  const key = '_default';
   transporterCache.delete(key);
 }
 
@@ -475,7 +474,7 @@ async function getTransporter(): Promise<Transporter> {
     } as nodemailer.TransportOptions);
   }
 
-  const cacheKey = getCurrentTenantId() || '_default';
+  const cacheKey = '_default';
   const cached = transporterCache.get(cacheKey);
   if (cached) return cached;
 
