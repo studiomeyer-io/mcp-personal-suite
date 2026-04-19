@@ -1,0 +1,48 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# OIDC token required for npm provenance (Trusted Publishing)
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: npm-publish
+      url: https://www.npmjs.com/package/mcp-personal-suite
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+
+      - name: install
+        run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: test
+        run: npm test
+
+      - name: build
+        run: npm run build
+
+      - name: audit (high+)
+        run: npm audit --audit-level=high
+
+      - name: publish with provenance
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
