@@ -2,6 +2,64 @@
 
 All notable changes to mcp-personal-suite are documented here.
 
+## [0.5.3] - 2026-04-19
+
+### Security (Round 2 of 3-agent review)
+
+Three new HIGH-severity findings and two Round-1 weakenings that the second
+review caught. Plus defence-in-depth on container + CI hygiene.
+
+- **Path traversal in `image_download`** (`src/modules/image/index.ts`).
+  Caller-supplied `filename` was passed to `path.join()` without sanitization,
+  so `filename: "../../etc/passwd"` would escape the download directory.
+  New `sanitizeFilename()` enforces `[A-Za-z0-9._-]+`, rejects `.`, `..`, path
+  separators, control characters, and filenames over 128 chars.
+- **SSRF via redirect** (`src/modules/image/index.ts`). `fetch()` was following
+  3xx responses by default, so a domain on the CDN allowlist could redirect
+  the server to `http://169.254.169.254/latest/meta-data/` (AWS metadata) or
+  any private IP. Fixed with `redirect: 'error'` — we now require direct URLs.
+- **Credential leakage in error logs** (`src/lib/logger.ts`). Upstream
+  libraries (imapflow, nodemailer, grammy, googleapis, etc.) sometimes include
+  user credentials in their thrown `Error.message`. New `sanitizeSecrets()`
+  strips Bearer tokens, `sk-…` API keys, Slack `xox…` tokens, Telegram bot
+  tokens, AWS/GitHub keys, `password=` query params, and basic-auth URLs
+  before anything reaches stderr.
+- **MAX_SESSIONS TOCTOU** (`src/lib/dual-transport.ts`). The `if (sessions.size
+  >= MAX)` check and the `sessions.set()` in `onsessioninitialized` were
+  separated by multiple `await`s, so 100 concurrent POSTs could all pass the
+  check and all create sessions. Now we reserve a placeholder slot
+  synchronously in the same tick as the check, and swap in the real session
+  id once the transport initializes. Reservation is cleaned up on failure.
+- **CORS Simple-Request bypass** (`src/lib/dual-transport.ts`). Browsers can
+  send cross-origin POSTs without preflight when `Content-Type` is form-encoded
+  or `text/plain`, so the origin whitelist alone was not sufficient. The
+  `/mcp` endpoint now enforces `Content-Type: application/json` and returns
+  `415` otherwise — any such attack is rejected before touching the transport.
+
+### Container hardening
+
+- **Dockerfile runs as `node` user** instead of root. `node:22-slim` ships
+  with a pre-built non-root user at UID 1000; `dist/` is now `--chown=node:node`
+  on copy. The HTTP endpoint is unchanged; the volume-mount path in the
+  README was updated to `/home/node/.personal-suite`.
+- **`.dockerignore`** added. Keeps `node_modules`, `.git`, tests, and env
+  files out of the build context.
+
+### Tests
+
+- `tests/security.test.ts` (10 new tests): roundtrip coverage for
+  `sanitizeSecrets()` across all supported token patterns, plus
+  env-var parsing shape checks for MAX_SESSIONS and ALLOWED_ORIGINS.
+- 384 / 384 tests green, typecheck clean, build clean, `npm audit`: 0.
+
+### Open-source hygiene
+
+- `SECURITY.md` — disclosure policy, threat model, response timelines.
+- `.github/workflows/ci.yml` — Node 20 + 22 matrix, typecheck / test /
+  build / `npm audit --audit-level=high` on every push and PR.
+- `.github/dependabot.yml` — weekly npm updates (grouped minor+patch,
+  separate `@types/*` group), monthly GitHub Actions updates.
+
 ## [0.5.2] - 2026-04-19
 
 ### Added

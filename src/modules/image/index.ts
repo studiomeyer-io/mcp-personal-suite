@@ -222,6 +222,32 @@ function validateDownloadUrl(rawUrl: string): { type: 'url'; url: string } | { t
   return { type: 'url', url: rawUrl };
 }
 
+// ---- Filename Sanitization (v0.5.3 — Path-Traversal defense) ----
+//
+// Reject path separators, control chars, relative-path tokens, and
+// NUL bytes. Anything beyond safe filename chars must be rejected,
+// not silently stripped — if a caller sends "../etc/passwd" that is
+// intent, not a typo, and we do not want to help them get closer.
+
+function sanitizeFilename(rawName: string): string {
+  const cleaned = basename(rawName); // strips any path component
+  if (!cleaned || cleaned === '.' || cleaned === '..') {
+    throw new Error('Filename cannot be empty, "." or ".."');
+  }
+  if (/[\x00-\x1f\x7f/\\]/.test(cleaned)) {
+    throw new Error('Filename contains control characters or path separators');
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(cleaned)) {
+    throw new Error(
+      'Filename must match [A-Za-z0-9._-]+. Spaces, quotes, and special chars are not allowed.',
+    );
+  }
+  if (cleaned.length > 128) {
+    throw new Error('Filename too long (max 128 chars)');
+  }
+  return cleaned;
+}
+
 // ---- Download Helper ----
 
 function getDownloadDir(): string {
@@ -407,7 +433,7 @@ export function registerImageTools(server: McpServer): void {
           const { readFile } = await import('node:fs/promises');
           const data = await readFile(validated.path);
           const srcName = basename(validated.path);
-          const finalName = filename || srcName;
+          const finalName = sanitizeFilename(filename || srcName);
           const destPath = join(downloadDir, finalName);
 
           await mkdir(downloadDir, { recursive: true });
@@ -428,9 +454,12 @@ export function registerImageTools(server: McpServer): void {
           });
         }
 
-        // Remote URL — download
+        // Remote URL — download.
+        // redirect: 'error' ensures we never follow 3xx off the CDN allowlist
+        // (v0.5.3 — SSRF-via-redirect defense). Caller must provide a direct URL.
         const response = await fetch(validated.url, {
           signal: AbortSignal.timeout(30_000),
+          redirect: 'error',
         });
 
         if (!response.ok) {
@@ -443,9 +472,11 @@ export function registerImageTools(server: McpServer): void {
         const contentType = response.headers.get('content-type') || 'image/png';
         const buffer = Buffer.from(await response.arrayBuffer());
 
-        // Determine filename
+        // Determine filename — sanitize any caller-supplied name
         const ext = inferExtension(contentType, validated.url);
-        const finalName = filename || `image-${Date.now()}${ext}`;
+        const finalName = filename
+          ? sanitizeFilename(filename)
+          : `image-${Date.now()}${ext}`;
 
         const destPath = join(downloadDir, finalName);
         await mkdir(downloadDir, { recursive: true });

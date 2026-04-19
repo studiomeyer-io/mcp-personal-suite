@@ -217,12 +217,29 @@ async function handleHttpRequest(
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
     if (req.method === 'POST') {
+      // Content-Type enforcement (v0.5.3 — CORS Simple-Request bypass defense).
+      // Browsers can send cross-origin POST without CORS preflight when
+      // Content-Type is form-encoded or text/plain. We require JSON explicitly
+      // so any such attack is rejected at 415 before touching handleRequest.
+      const contentType = (req.headers['content-type'] || '').toLowerCase();
+      if (!contentType.includes('application/json')) {
+        res.writeHead(415, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: 'Content-Type must be application/json',
+          code: 'UNSUPPORTED_MEDIA_TYPE',
+        }));
+        return;
+      }
+
       const body = await parseBody(req);
 
       if (sessionId && sessions.has(sessionId)) {
         // Existing session
         await sessions.get(sessionId)!.transport.handleRequest(req, res, body);
       } else if (!sessionId) {
+        // Atomic reserve (v0.5.3 — TOCTOU defense on MAX_SESSIONS).
+        // Check + set happen in the same synchronous tick, so no two
+        // concurrent requests can both pass the check and both create a session.
         if (sessions.size >= MAX_SESSIONS) {
           res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '60' });
           res.end(JSON.stringify({
@@ -231,26 +248,38 @@ async function handleHttpRequest(
           }));
           return;
         }
-        // New session
-        const mcpServer = createServer();
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (sid: string) => {
-            sessions.set(sid, { transport, createdAt: Date.now() });
-            logger.info(
-              `Session created: ${sid.slice(0, 8)}... (${sessions.size} active)`,
-            );
-          },
-          onsessionclosed: (sid: string) => {
-            sessions.delete(sid);
-            logger.info(
-              `Session closed: ${sid.slice(0, 8)}... (${sessions.size} active)`,
-            );
-          },
+        const reservedId = `reserved-${randomUUID()}`;
+        sessions.set(reservedId, {
+          transport: null as unknown as StreamableHTTPServerTransport,
+          createdAt: Date.now(),
         });
 
-        await mcpServer.connect(transport);
-        await transport.handleRequest(req, res, body);
+        try {
+          const mcpServer = createServer();
+          const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+            onsessioninitialized: (sid: string) => {
+              sessions.delete(reservedId);
+              sessions.set(sid, { transport, createdAt: Date.now() });
+              logger.info(
+                `Session created: ${sid.slice(0, 8)}... (${sessions.size} active)`,
+              );
+            },
+            onsessionclosed: (sid: string) => {
+              sessions.delete(sid);
+              logger.info(
+                `Session closed: ${sid.slice(0, 8)}... (${sessions.size} active)`,
+              );
+            },
+          });
+
+          await mcpServer.connect(transport);
+          await transport.handleRequest(req, res, body);
+        } catch (err) {
+          // Reservation cleanup on any failure before onsessioninitialized fires
+          sessions.delete(reservedId);
+          throw err;
+        }
       } else {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(
