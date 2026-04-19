@@ -101,6 +101,12 @@ calendar_upcoming          calendar_daily_summary
 Telegram (grammy), Discord (discord.js), Slack (@slack/bolt), WhatsApp (Baileys).
 Bring your own bot tokens. Send, receive, broadcast, history.
 
+> **Heads-up on WhatsApp:** Baileys is an *unofficial* reverse-engineered client.
+> It works but carries supply-chain risk and can break whenever WhatsApp changes
+> its protocol. For anything production-critical, use the official
+> [WhatsApp Business API (WABA)](https://developers.facebook.com/docs/whatsapp)
+> instead. Baileys is fine for personal/tinkering use.
+
 ```
 channel_status    channel_send       channel_receive     channel_list
 channel_connect   channel_disconnect channel_broadcast   channel_history
@@ -176,8 +182,18 @@ If you want a long-running server for multiple clients on your LAN:
 mcp-personal-suite --http --port=5120
 ```
 
-Point your MCP client at `http://localhost:5120/mcp`. Streamable HTTP, session
-management included. Bind it behind your own reverse proxy if you expose it.
+Point your MCP client at `http://localhost:5120/mcp`. Streamable HTTP with
+session management. Bind behind your own reverse proxy if you expose it beyond
+localhost.
+
+**Security defaults (HTTP mode):**
+- `MCP_ALLOWED_ORIGINS` — comma-separated origin whitelist for browser-based
+  MCP clients. Unset means no cross-origin requests accepted (safest). Example:
+  `MCP_ALLOWED_ORIGINS=http://localhost:3000,https://my-client.example.com`.
+- `MCP_MAX_SESSIONS` — cap on concurrent sessions (default `100`). Returns
+  `503 Retry-After: 60` beyond the limit.
+- `MCP_HOST` — bind address (default `127.0.0.1`). Change to `0.0.0.0` only
+  if you actually want to expose the server on the network.
 
 ### Docker
 

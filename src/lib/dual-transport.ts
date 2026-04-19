@@ -38,6 +38,12 @@ export interface DualTransportOptions {
   defaultPort: number;
 }
 
+const MAX_SESSIONS = parseInt(process.env['MCP_MAX_SESSIONS'] || '100', 10);
+const ALLOWED_ORIGINS = (process.env['MCP_ALLOWED_ORIGINS'] || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 export interface TransportResult {
   type: 'stdio' | 'http';
   port?: number;
@@ -164,11 +170,26 @@ async function handleHttpRequest(
   createServer: McpServerFactory,
   options: DualTransportOptions,
 ): Promise<void> {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, MCP-Session-ID');
-  res.setHeader('Access-Control-Expose-Headers', 'MCP-Session-ID');
+  // CORS — strict by default. Only allow origins explicitly whitelisted
+  // via MCP_ALLOWED_ORIGINS env (comma-separated). Browser-based MCP clients
+  // need an explicit opt-in; stdio and server-to-server clients send no
+  // Origin header and are unaffected.
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, MCP-Session-ID');
+    res.setHeader('Access-Control-Expose-Headers', 'MCP-Session-ID');
+  } else if (origin) {
+    // Cross-origin request from a non-whitelisted origin — reject preflight
+    // and drop Origin on actual requests (browser enforces via Same-Origin).
+    if (req.method === 'OPTIONS') {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Origin not allowed', code: 'ORIGIN_FORBIDDEN' }));
+      return;
+    }
+  }
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -202,6 +223,14 @@ async function handleHttpRequest(
         // Existing session
         await sessions.get(sessionId)!.transport.handleRequest(req, res, body);
       } else if (!sessionId) {
+        if (sessions.size >= MAX_SESSIONS) {
+          res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '60' });
+          res.end(JSON.stringify({
+            error: `Too many active sessions (${sessions.size}/${MAX_SESSIONS})`,
+            code: 'MAX_SESSIONS',
+          }));
+          return;
+        }
         // New session
         const mcpServer = createServer();
         const transport = new StreamableHTTPServerTransport({

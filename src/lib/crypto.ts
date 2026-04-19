@@ -81,10 +81,13 @@ function getOrCreateKey(): Buffer {
     return cachedKey;
   } catch (err) {
     logger.logError('Failed to manage encryption key', err);
-    // Fallback: derive from hostname (not ideal but better than plaintext)
-    const fallback = createHash('sha256').update(homedir() + '-personal-suite').digest();
-    cachedKey = fallback;
-    return cachedKey;
+    throw new Error(
+      'Cannot read or create the encryption key at ~/.personal-suite/.key, and ' +
+      'CREDENTIAL_ENCRYPTION_KEY env var is not set. Fix one of these: ' +
+      '(1) ensure the config directory is writable (chmod 0700 ~/.personal-suite), ' +
+      '(2) set CREDENTIAL_ENCRYPTION_KEY to a 32+ byte secret. ' +
+      'Refusing to fall back to a predictable key — that would silently weaken encryption.',
+    );
   }
 }
 
