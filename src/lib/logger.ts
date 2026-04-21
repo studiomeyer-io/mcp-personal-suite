@@ -35,6 +35,15 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/\bkey-[a-f0-9]{32}\b/gi, '[MAILGUN_KEY_REDACTED]'],                     // Mailgun
   [/\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b/g, '[SENDGRID_KEY_REDACTED]'], // SendGrid
   [/\b[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{32}\b/gi, '[BREVO_KEY_REDACTED]'], // Brevo / xkeysib pattern (rough)
+  // Session 840 Critic follow-up — five upstream leak shapes earlier
+  // patterns missed. Placed before the catch-all password/URL rules so
+  // provider-specific tokens win when both would match.
+  [/\btvly-[A-Za-z0-9_-]{20,}\b/g, '[TAVILY_KEY_REDACTED]'],                // Tavily research API
+  [/\bfal-[A-Za-z0-9_-]{20,}\b/g, '[FAL_KEY_REDACTED]'],                    // fal.ai media
+  [/\b1\/\/0[A-Za-z0-9_-]{40,}\b/g, '[GOOGLE_REFRESH_TOKEN_REDACTED]'],      // Google OAuth refresh (1//0...)
+  [/AUTH\s+(PLAIN|LOGIN)\s+[A-Za-z0-9+/=]{16,}/gi, 'AUTH $1 [REDACTED]'],    // SMTP AUTH PLAIN/LOGIN base64
+  [/["']?(?:noiseKey|signedIdentityKey|signedPreKey|registrationId|advSecretKey)["']?\s*[:=]\s*["']?[^"'\s,}]+/gi,
+    '[WHATSAPP_AUTH_REDACTED]'],                                            // Baileys WhatsApp session state
   [/password=['"]?[^'"\s&]+/gi, 'password=[REDACTED]'],
   [/:\/\/([^:@/]+):([^@/]+)@/g, '://$1:[REDACTED]@'],
 ];

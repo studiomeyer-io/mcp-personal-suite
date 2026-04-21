@@ -17,6 +17,7 @@ import {
   getConfigPath,
 } from '../../lib/config.js';
 import { logger } from '../../lib/logger.js';
+import { sanitizeToolOutput } from '../../lib/sanitize-output.js';
 import { getSuiteGuide } from './guide.js';
 import {
   buildEmailConfig,
@@ -57,9 +58,9 @@ function registerSuiteGuide(server: McpServer): void {
     },
     async ({ topic }) => {
       const guide = getSuiteGuide(topic || 'quickstart');
-      return {
+      return sanitizeToolOutput({
         content: [{ type: 'text' as const, text: guide }],
-      };
+      });
     },
   );
 }
@@ -157,9 +158,9 @@ function registerSuiteStatus(server: McpServer): void {
         lines.push('- image_*    — Image tools (3): generate/edit/download');
         lines.push('- suite_*    — System tools (4): status, setup, health, guide');
 
-        return {
+        return sanitizeToolOutput({
           content: [{ type: 'text' as const, text: lines.join('\n') }],
-        };
+        });
       } catch (err) {
         logger.logError('suite_status failed', err);
         return {
@@ -372,9 +373,9 @@ function registerSuiteSetup(server: McpServer): void {
 
         // If we only have a note (e.g., OAuth required), return without saving
         if (setupNote && !config.email && !config.calendar && !config.messaging && !config.search) {
-          return {
+          return sanitizeToolOutput({
             content: [{ type: 'text' as const, text: setupNote }],
-          };
+          });
         }
 
         await saveConfig(config);
@@ -386,9 +387,9 @@ function registerSuiteSetup(server: McpServer): void {
           ? `${setupNote}\n\n---\nModule "${moduleName}" configured successfully. ${storageNote}\n\nRun suite_health to test the connection.`
           : `Module "${moduleName}" configured successfully. ${storageNote}\n\nRun suite_status to verify, or suite_health to test the connection.`;
 
-        return {
+        return sanitizeToolOutput({
           content: [{ type: 'text' as const, text: successMsg }],
-        };
+        });
       } catch (err) {
         logger.logError('suite_setup failed', err);
         return {
@@ -464,9 +465,9 @@ function registerSuiteHealth(server: McpServer): void {
           results.push('[SKIP] Not configured');
         }
 
-        return {
+        return sanitizeToolOutput({
           content: [{ type: 'text' as const, text: results.join('\n') }],
-        };
+        });
       } catch (err) {
         logger.logError('suite_health failed', err);
         return {
@@ -527,10 +528,10 @@ function registerSuiteDelete(server: McpServer): void {
         };
       } catch (err) {
         logger.logError('suite_delete failed', err);
-        return {
+        return sanitizeToolOutput({
           content: [{ type: 'text' as const, text: `Delete failed: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
-        };
+        });
       }
     },
   );

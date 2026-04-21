@@ -31,8 +31,13 @@ vi.mock('../src/lib/logger.js', () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
     logError: vi.fn(),
   },
+  // Real sanitizeSecrets is a pure function; forward it so the shared
+  // tool-response helper (which imports it) still strips secrets in tests.
+  sanitizeSecrets: (text: string) => text,
 }));
 
 // ---- Test Helpers ----

@@ -28,18 +28,7 @@ const MESSAGE_LIMITS: Record<string, number> = {
 
 // ---- Helpers ----
 
-interface ToolResponse {
-  [x: string]: unknown;
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-}
-
-function jsonResponse(result: unknown, isError?: boolean): ToolResponse {
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    ...(isError !== undefined ? { isError } : {}),
-  };
-}
+import { jsonResponse, type ToolResponse } from '../../lib/tool-response.js';
 
 function errorResponse(message: string, code?: string): ToolResponse {
   // Auto-detect NOT_CONFIGURED from credential/config error messages

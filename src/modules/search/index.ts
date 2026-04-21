@@ -20,6 +20,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { logger } from '../../lib/logger.js';
+import { jsonResponse, errorResponse as sharedErrorResponse, type ToolResponse } from '../../lib/tool-response.js';
 import { exaNeuralSearch, exaCodeSearch } from './providers/exa.js';
 import { tavilyResearch } from './providers/tavily.js';
 import {
@@ -46,21 +47,8 @@ export type {
   NewsEngine,
 } from './engines.js';
 
-interface ToolResponse {
-  [x: string]: unknown;
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
-}
-
-function jsonResponse(result: unknown, isError?: boolean): ToolResponse {
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-    ...(isError !== undefined ? { isError } : {}),
-  };
-}
-
 function errorResponse(message: string, code?: string): ToolResponse {
-  return jsonResponse({ error: message, code: code ?? 'SEARCH_ERROR' }, true);
+  return sharedErrorResponse(message, code ?? 'SEARCH_ERROR');
 }
 
 // ─── Tool Registration ───────────────────────────────

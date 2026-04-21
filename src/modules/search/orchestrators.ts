@@ -9,6 +9,7 @@
  */
 
 import { logger } from '../../lib/logger.js';
+import { createLimiter } from '../../lib/concurrency.js';
 import { exaNeuralSearch } from './providers/exa.js';
 import { tavilyResearch } from './providers/tavily.js';
 import {
@@ -24,6 +25,15 @@ import {
   type SearchResult,
   type WebEngine,
 } from './engines.js';
+
+// Cap concurrent upstream requests inside one doDeepSearch invocation.
+// Overridable per-tenant at runtime via env var — the default of 3 keeps
+// Brave/Exa/Tavily free-tier rate-limits happy while still giving real
+// parallelism over 5-8 search angles.
+const DEEP_SEARCH_CONCURRENCY = (() => {
+  const raw = Number(process.env.MCP_SUITE_DEEP_SEARCH_CONCURRENCY);
+  return Number.isInteger(raw) && raw >= 1 ? raw : 3;
+})();
 
 // ─── Unified web / news / image search ───────────────
 
@@ -197,16 +207,19 @@ export async function doDeepSearch(
   // Generate search angles by decomposing the query into sub-queries
   const angles = generateSearchAngles(query, maxRounds);
 
-  // Run all angles in parallel
+  // Rate-limited fan-out: at most N in-flight to respect provider limits.
+  const limit = createLimiter(DEEP_SEARCH_CONCURRENCY);
   const roundResults = await Promise.allSettled(
-    angles.map(async (angle): Promise<DeepSearchRound> => {
-      try {
-        const response = await doWebSearch(angle, maxResultsPerRound);
-        return { angle, results: response.results };
-      } catch {
-        return { angle, results: [] };
-      }
-    }),
+    angles.map((angle) =>
+      limit(async (): Promise<DeepSearchRound> => {
+        try {
+          const response = await doWebSearch(angle, maxResultsPerRound);
+          return { angle, results: response.results };
+        } catch {
+          return { angle, results: [] };
+        }
+      }),
+    ),
   );
 
   const rounds: DeepSearchRound[] = roundResults

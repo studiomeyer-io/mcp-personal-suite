@@ -4,6 +4,52 @@ All notable changes to mcp-personal-suite are documented here.
 
 ## Unreleased
 
+### Security + Quality — Split-Critic follow-through + five leak shapes (Session 840, 2026-04-21)
+
+The four deferred Session 839 Split-Critic nachbesserungen are now addressed.
+28 new tests; 418/418 green.
+
+- **NEW `src/lib/concurrency.ts`** — zero-dep `createLimiter(N)` (p-limit
+  shape). Used in `doDeepSearch` to cap concurrent upstream requests.
+  Default is 3 (overridable via `MCP_SUITE_DEEP_SEARCH_CONCURRENCY`);
+  previously 8 search-angles fanned out at once against a single BYOK
+  provider, which blew past Brave free-tier + Tavily/Exa rate limits.
+
+- **NEW `src/lib/sanitize-output.ts`** — `sanitizeToolOutput(response)`
+  walks a full MCP tool-response tree and pushes every string through
+  the existing `logger.sanitizeSecrets` scrub (15+ secret shapes:
+  Bearer / sk-ant / sk- / xox / Telegram / AKIA / AIza / ghp_ / gho_ /
+  BSA / Stripe rk_live / Mailgun / SendGrid / Brevo pattern / basic-auth
+  URL). Catches the case where an upstream library — imapflow,
+  googleapis, grammy, `@slack/bolt`, fal — embedded credentials into an
+  Error.message that was then echoed to the MCP client.
+
+- **NEW `src/lib/tool-response.ts`** — shared `jsonResponse` /
+  `errorResponse` / `textResponse` helpers. Every one of the six
+  modules (email, calendar, messaging, search, image, system) had its
+  own copy of `jsonResponse` — six chances to forget the sanitizer on
+  an error path. Extracted to a single helper; every outgoing response
+  now goes through `sanitizeToolOutput`. No API changes (the shared
+  ToolResponse type matches the one each module had locally).
+
+- **Boundary tests** — `tests/module-boundaries.test.ts` locks in the
+  independence the Session 839 module splits promised: each sub-module
+  is importable in isolation, exports the API its orchestrator expects,
+  is free of circular imports between search and system.
+
+**Post-review follow-through (Session 840 Agent Critic):**
+
+- `src/lib/logger.ts` SECRET_PATTERNS gains five leak shapes that were
+  missing from the 15-pattern list: Tavily (`tvly-`), fal.ai (`fal-`),
+  Google OAuth refresh tokens (`1//0...`), SMTP `AUTH PLAIN/LOGIN`
+  base64, and Baileys WhatsApp session-state keys (`noiseKey`,
+  `signedIdentityKey`, `signedPreKey`, `registrationId`, `advSecretKey`).
+  Placed before the catch-all `password=` / URL basic-auth rules so
+  provider-specific tokens win when both would match.
+- One extra test in `tests/sanitize-output.test.ts` exercises all five
+  new patterns plus negative-space assertions (none of the original
+  secret values survives the scrub).
+
 ### Refactor — split the two largest modules along their natural seams
 
 The Analyst cohesion review flagged `src/modules/system/index.ts` (953 LOC)
