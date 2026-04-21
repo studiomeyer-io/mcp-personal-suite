@@ -1,10 +1,11 @@
 /**
- * System Module — suite_status, suite_setup, suite_health
+ * System Module — suite_guide, suite_status, suite_setup, suite_health, suite_delete
  *
- * Meta-tools for managing the Personal Suite itself:
- * - Check which modules are configured
- * - Interactive setup wizard for each module
- * - Health checks for all configured connections
+ * Meta-tools for managing the Personal Suite itself. This file owns the MCP
+ * tool-registration surface. The heavier logic lives in:
+ *   - ./setup-builders.ts — turns flat tool args into typed module configs
+ *   - ./health-checks.ts  — probes each configured module
+ *   - ./guide.ts          — embedded documentation strings
  */
 
 import { z } from 'zod';
@@ -14,16 +15,23 @@ import {
   saveConfig,
   getModuleStatus,
   getConfigPath,
-  type SuiteConfig,
-  type EmailConfig,
-  type CalendarConfig,
-  type CalDAVConfig,
-  type MessagingConfig,
-  type SearchConfig,
-  type ImageConfig,
 } from '../../lib/config.js';
 import { logger } from '../../lib/logger.js';
 import { getSuiteGuide } from './guide.js';
+import {
+  buildEmailConfig,
+  buildCalendarConfig,
+  buildMessagingConfig,
+  buildSearchConfig,
+  buildImageConfig,
+} from './setup-builders.js';
+import {
+  checkEmailHealth,
+  checkCalendarHealth,
+  checkMessagingHealth,
+  checkSearchHealth,
+  checkImageHealth,
+} from './health-checks.js';
 
 // ─── Registration ────────────────────────────────────
 
@@ -397,210 +405,6 @@ function registerSuiteSetup(server: McpServer): void {
   );
 }
 
-// ─── Config Builders ─────────────────────────────────
-
-function buildEmailConfig(args: Record<string, unknown>): EmailConfig {
-  const provider = args.email_provider as 'gmail' | 'outlook' | 'imap' | undefined;
-  if (!provider) {
-    throw new Error('email_provider is required for email module setup');
-  }
-
-  const emailConfig: EmailConfig = {
-    provider,
-    fromName: (args.email_from_name as string) || undefined,
-    fromAddress: (args.email_from_address as string) || undefined,
-  };
-
-  if (provider === 'gmail' || provider === 'outlook') {
-    const clientId = args.email_oauth_client_id as string | undefined;
-    const clientSecret = args.email_oauth_client_secret as string | undefined;
-    if (!clientId || !clientSecret) {
-      throw new Error(
-        `OAuth2 client_id and client_secret are required for ${provider}. ` +
-          'Provide email_oauth_client_id and email_oauth_client_secret.',
-      );
-    }
-    emailConfig.oauth = {
-      accessToken: (args.email_oauth_access_token as string) || '',
-      refreshToken: (args.email_oauth_refresh_token as string) || undefined,
-      clientId,
-      clientSecret,
-    };
-  }
-
-  if (provider === 'imap') {
-    const imapHost = args.email_imap_host as string | undefined;
-    const imapUser = args.email_imap_user as string | undefined;
-    const imapPassword = args.email_imap_password as string | undefined;
-    if (!imapHost || !imapUser || !imapPassword) {
-      throw new Error(
-        'IMAP setup requires email_imap_host, email_imap_user, and email_imap_password',
-      );
-    }
-    emailConfig.imap = {
-      host: imapHost,
-      port: (args.email_imap_port as number) || 993,
-      user: imapUser,
-      password: imapPassword,
-      tls: true,
-    };
-    emailConfig.smtp = {
-      host: (args.email_smtp_host as string) || imapHost,
-      port: (args.email_smtp_port as number) || 587,
-      user: imapUser,
-      password: imapPassword,
-      tls: true,
-    };
-  }
-
-  return emailConfig;
-}
-
-function buildCalendarConfig(args: Record<string, unknown>): CalendarConfig {
-  const provider = (args.calendar_provider as 'google' | 'caldav' | undefined) ?? 'google';
-
-  if (provider === 'caldav') {
-    const url = args.calendar_caldav_url as string | undefined;
-    const username = args.calendar_caldav_username as string | undefined;
-    const password = args.calendar_caldav_password as string | undefined;
-    if (!url || !username || !password) {
-      throw new Error(
-        'CalDAV requires calendar_caldav_url, calendar_caldav_username, and calendar_caldav_password. ' +
-        'Example: suite_setup(module: "calendar", calendar_provider: "caldav", ' +
-        'calendar_caldav_url: "https://caldav.icloud.com", calendar_caldav_username: "user@icloud.com", ' +
-        'calendar_caldav_password: "app-specific-password")',
-      );
-    }
-
-    const caldav: CalDAVConfig = {
-      url,
-      username,
-      password,
-      defaultCalendarId: (args.calendar_default_calendar_id as string) || undefined,
-    };
-
-    return {
-      provider: 'caldav',
-      caldav,
-      defaultCalendarId: caldav.defaultCalendarId,
-    };
-  }
-
-  // Google provider
-  const clientId = args.calendar_oauth_client_id as string | undefined;
-  const clientSecret = args.calendar_oauth_client_secret as string | undefined;
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      'Google Calendar requires calendar_oauth_client_id and calendar_oauth_client_secret. ' +
-      'Or use CalDAV: suite_setup(module: "calendar", calendar_provider: "caldav", ...)',
-    );
-  }
-
-  return {
-    provider: 'google',
-    oauth: {
-      accessToken: (args.calendar_oauth_access_token as string) || '',
-      refreshToken: (args.calendar_oauth_refresh_token as string) || undefined,
-      clientId,
-      clientSecret,
-    },
-    defaultCalendarId:
-      (args.calendar_default_calendar_id as string) || 'primary',
-  };
-}
-
-function buildMessagingConfig(
-  existing: MessagingConfig | undefined,
-  args: Record<string, unknown>,
-): MessagingConfig {
-  const config: MessagingConfig = { ...existing };
-  const platform = args.channel_platform as string | undefined;
-
-  if (!platform) {
-    throw new Error(
-      'channel_platform is required for messaging module setup (telegram, discord, slack, whatsapp)',
-    );
-  }
-
-  const botToken = args.channel_bot_token as string | undefined;
-  const defaultChannel = args.channel_default_id as string | undefined;
-
-  switch (platform) {
-    case 'telegram':
-      if (!botToken)
-        throw new Error('channel_bot_token is required for Telegram');
-      config.telegram = {
-        botToken,
-        defaultChatId: defaultChannel,
-      };
-      break;
-    case 'discord':
-      if (!botToken)
-        throw new Error('channel_bot_token is required for Discord');
-      config.discord = {
-        botToken,
-        defaultChannelId: defaultChannel,
-      };
-      break;
-    case 'slack':
-      if (!botToken)
-        throw new Error('channel_bot_token is required for Slack');
-      config.slack = {
-        botToken,
-        signingSecret: (args.channel_signing_secret as string) || undefined,
-        defaultChannelId: defaultChannel,
-      };
-      break;
-    case 'whatsapp':
-      config.whatsapp = {
-        sessionPath: defaultChannel || undefined,
-      };
-      break;
-    default:
-      throw new Error(`Unknown platform: ${platform}`);
-  }
-
-  return config;
-}
-
-function buildSearchConfig(args: Record<string, unknown>): SearchConfig {
-  const searxngUrl = args.search_searxng_url as string | undefined;
-  const braveApiKey = args.search_brave_api_key as string | undefined;
-  const exaApiKey = args.search_exa_api_key as string | undefined;
-  const tavilyApiKey = args.search_tavily_api_key as string | undefined;
-
-  if (!searxngUrl && !braveApiKey && !exaApiKey && !tavilyApiKey) {
-    throw new Error(
-      'At least one search provider is required: search_searxng_url, search_brave_api_key, search_exa_api_key, or search_tavily_api_key',
-    );
-  }
-
-  return {
-    searxngUrl: searxngUrl || undefined,
-    braveApiKey: braveApiKey || undefined,
-    exaApiKey: exaApiKey || undefined,
-    tavilyApiKey: tavilyApiKey || undefined,
-  };
-}
-
-function buildImageConfig(args: Record<string, unknown>): ImageConfig {
-  const openaiApiKey = args.image_openai_api_key as string | undefined;
-  const fluxApiKey = args.image_flux_api_key as string | undefined;
-  const geminiApiKey = args.image_gemini_api_key as string | undefined;
-
-  if (!openaiApiKey && !fluxApiKey && !geminiApiKey) {
-    throw new Error(
-      'At least one image provider is required: image_openai_api_key, image_flux_api_key, or image_gemini_api_key',
-    );
-  }
-
-  return {
-    openaiApiKey: openaiApiKey || undefined,
-    fluxApiKey: fluxApiKey || undefined,
-    geminiApiKey: geminiApiKey || undefined,
-  };
-}
-
 // ─── suite_health ────────────────────────────────────
 
 function registerSuiteHealth(server: McpServer): void {
@@ -677,226 +481,6 @@ function registerSuiteHealth(server: McpServer): void {
       }
     },
   );
-}
-
-// ─── Health Check Implementations ────────────────────
-
-async function checkEmailHealth(config: EmailConfig): Promise<string> {
-  if (config.provider === 'imap' && config.imap) {
-    try {
-      const { ImapFlow } = await import('imapflow');
-      const client = new ImapFlow({
-        host: config.imap!.host,
-        port: config.imap!.port,
-        secure: config.imap!.tls ?? true,
-        auth: { user: config.imap!.user, pass: config.imap!.password ?? '' },
-        logger: false,
-        tls: { rejectUnauthorized: true },
-        connectionTimeout: 10_000,
-      } as ConstructorParameters<typeof ImapFlow>[0]);
-
-      try {
-        await client.connect();
-        await client.logout();
-        return `[OK] IMAP connected to ${config.imap!.host}:${config.imap!.port}`;
-      } catch (err) {
-        return `[FAIL] IMAP error: ${err instanceof Error ? err.message : String(err)}`;
-      }
-    } catch (err) {
-      return `[FAIL] IMAP: ${err instanceof Error ? err.message : String(err)}`;
-    }
-  }
-
-  if (config.provider === 'gmail' || config.provider === 'outlook') {
-    if (config.oauth?.accessToken) {
-      return `[OK] ${config.provider} OAuth configured (token present)`;
-    }
-    return `[WARN] ${config.provider} OAuth configured but no access token. Run email_auth to complete setup.`;
-  }
-
-  return '[WARN] Email configured but provider details incomplete';
-}
-
-async function checkCalendarHealth(config: CalendarConfig): Promise<string> {
-  if (config.provider === 'caldav') {
-    try {
-      const { caldavHealthCheck } = await import('../../modules/calendar/caldav-calendar.js');
-      return await caldavHealthCheck();
-    } catch (err) {
-      return `[FAIL] CalDAV: ${err instanceof Error ? err.message : String(err)}`;
-    }
-  }
-
-  // Google provider
-  if (config.oauth?.accessToken) {
-    return `[OK] Google Calendar OAuth configured (token present)`;
-  }
-  return '[WARN] Google Calendar configured but no access token';
-}
-
-async function checkMessagingHealth(
-  config: MessagingConfig,
-): Promise<string[]> {
-  const results: string[] = [];
-
-  if (config.telegram?.botToken) {
-    try {
-      const response = await fetch(
-        `https://api.telegram.org/bot${config.telegram.botToken}/getMe`,
-      );
-      if (response.ok) {
-        const data = (await response.json()) as {
-          ok: boolean;
-          result?: { username?: string };
-        };
-        const username =
-          data.result?.username || 'unknown';
-        results.push(`[OK] Telegram bot: @${username}`);
-      } else {
-        results.push(`[FAIL] Telegram: HTTP ${response.status}`);
-      }
-    } catch (err) {
-      results.push(
-        `[FAIL] Telegram: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-
-  if (config.discord?.botToken) {
-    try {
-      const response = await fetch('https://discord.com/api/v10/users/@me', {
-        headers: {
-          Authorization: `Bot ${config.discord.botToken}`,
-        },
-      });
-      if (response.ok) {
-        const data = (await response.json()) as { username?: string };
-        results.push(`[OK] Discord bot: ${data.username || 'connected'}`);
-      } else {
-        results.push(`[FAIL] Discord: HTTP ${response.status}`);
-      }
-    } catch (err) {
-      results.push(
-        `[FAIL] Discord: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-
-  if (config.slack?.botToken) {
-    try {
-      const response = await fetch('https://slack.com/api/auth.test', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${config.slack.botToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (response.ok) {
-        const data = (await response.json()) as {
-          ok: boolean;
-          user?: string;
-          error?: string;
-        };
-        if (data.ok) {
-          results.push(`[OK] Slack bot: ${data.user || 'connected'}`);
-        } else {
-          results.push(`[FAIL] Slack: ${data.error || 'unknown error'}`);
-        }
-      } else {
-        results.push(`[FAIL] Slack: HTTP ${response.status}`);
-      }
-    } catch (err) {
-      results.push(
-        `[FAIL] Slack: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-
-  if (config.whatsapp) {
-    results.push('[INFO] WhatsApp: configured (connection tested on first use)');
-  }
-
-  if (results.length === 0) {
-    results.push('[SKIP] No messaging platforms configured');
-  }
-
-  return results;
-}
-
-async function checkSearchHealth(config: SearchConfig): Promise<string[]> {
-  const results: string[] = [];
-
-  if (config.searxngUrl) {
-    try {
-      const response = await fetch(`${config.searxngUrl}/config`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (response.ok) {
-        results.push(`[OK] SearXNG at ${config.searxngUrl}`);
-      } else {
-        results.push(`[FAIL] SearXNG: HTTP ${response.status}`);
-      }
-    } catch (err) {
-      results.push(
-        `[FAIL] SearXNG: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-
-  if (config.braveApiKey) {
-    try {
-      const response = await fetch(
-        'https://api.search.brave.com/res/v1/web/search?q=test&count=1',
-        {
-          headers: {
-            'X-Subscription-Token': config.braveApiKey,
-            Accept: 'application/json',
-          },
-          signal: AbortSignal.timeout(5000),
-        },
-      );
-      if (response.ok) {
-        results.push('[OK] Brave Search API');
-      } else {
-        results.push(`[FAIL] Brave Search: HTTP ${response.status}`);
-      }
-    } catch (err) {
-      results.push(
-        `[FAIL] Brave Search: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-
-  if (results.length === 0) {
-    results.push('[SKIP] No search engines configured');
-  }
-
-  return results;
-}
-
-function checkImageHealth(config: ImageConfig): string[] {
-  const results: string[] = [];
-
-  if (config.openaiApiKey) {
-    const masked = config.openaiApiKey.slice(0, 7) + '...' + config.openaiApiKey.slice(-4);
-    results.push(`[OK] OpenAI (DALL-E 3): key configured (${masked})`);
-  }
-
-  if (config.fluxApiKey) {
-    const masked = config.fluxApiKey.slice(0, 4) + '...' + config.fluxApiKey.slice(-4);
-    results.push(`[OK] Flux Pro (fal.ai): key configured (${masked})`);
-  }
-
-  if (config.geminiApiKey) {
-    const masked = config.geminiApiKey.slice(0, 4) + '...' + config.geminiApiKey.slice(-4);
-    results.push(`[OK] Gemini (Google AI): key configured (${masked})`);
-  }
-
-  if (results.length === 0) {
-    results.push('[SKIP] No image providers configured');
-  }
-
-  return results;
 }
 
 // ─── suite_delete (GDPR/DSGVO) ──────────────────────
