@@ -33,12 +33,12 @@ vi.mock('googleapis', () => ({
   google: {
     calendar: vi.fn(() => mockCalendar),
     auth: {
-      OAuth2: vi.fn().mockImplementation(() => ({
-        setCredentials: vi.fn(),
-      })),
-      GoogleAuth: vi.fn().mockImplementation(() => ({
-        getClient: vi.fn().mockResolvedValue({}),
-      })),
+      OAuth2: vi.fn(function OAuth2(this: { setCredentials: (c: unknown) => void }) {
+        this.setCredentials = vi.fn();
+      }),
+      GoogleAuth: vi.fn(function GoogleAuth(this: { getClient: () => Promise<unknown> }) {
+        this.getClient = vi.fn().mockResolvedValue({});
+      }),
     },
   },
 }));

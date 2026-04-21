@@ -8,26 +8,30 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock external SDK dependencies BEFORE imports
+// NOTE: vitest 4 enforces that a mock called with `new` must be constructable.
+// Arrow functions inside `.mockImplementation(() => ...)` have no [[Construct]]
+// internal method and throw "is not a constructor". Classic `function()` bodies
+// (or named functions passed directly into vi.fn(fn)) construct fine.
 vi.mock('grammy', () => ({
-  Bot: vi.fn().mockImplementation(() => ({
-    api: { getMe: vi.fn(), sendMessage: vi.fn() },
-    on: vi.fn(),
-    start: vi.fn(),
-    stop: vi.fn(),
-  })),
+  Bot: vi.fn(function Bot(this: Record<string, unknown>) {
+    this.api = { getMe: vi.fn(), sendMessage: vi.fn() };
+    this.on = vi.fn();
+    this.start = vi.fn();
+    this.stop = vi.fn();
+  }),
 }));
 
 vi.mock('discord.js', () => ({
-  Client: vi.fn().mockImplementation(() => ({
-    on: vi.fn(),
-    once: vi.fn(),
-    login: vi.fn(),
-    destroy: vi.fn(),
-    isReady: vi.fn().mockReturnValue(false),
-    channels: { fetch: vi.fn(), cache: new Map() },
-    guilds: { cache: new Map() },
-    user: null,
-  })),
+  Client: vi.fn(function Client(this: Record<string, unknown>) {
+    this.on = vi.fn();
+    this.once = vi.fn();
+    this.login = vi.fn();
+    this.destroy = vi.fn();
+    this.isReady = vi.fn().mockReturnValue(false);
+    this.channels = { fetch: vi.fn(), cache: new Map() };
+    this.guilds = { cache: new Map() };
+    this.user = null;
+  }),
   Events: {
     MessageCreate: 'messageCreate',
     ClientReady: 'ready',
@@ -45,16 +49,16 @@ vi.mock('discord.js', () => ({
 }));
 
 vi.mock('@slack/bolt', () => ({
-  App: vi.fn().mockImplementation(() => ({
-    message: vi.fn(),
-    start: vi.fn(),
-    stop: vi.fn(),
-    client: {
+  App: vi.fn(function App(this: Record<string, unknown>) {
+    this.message = vi.fn();
+    this.start = vi.fn();
+    this.stop = vi.fn();
+    this.client = {
       auth: { test: vi.fn() },
       chat: { postMessage: vi.fn() },
       conversations: { list: vi.fn(), history: vi.fn() },
-    },
-  })),
+    };
+  }),
 }));
 
 vi.mock('@whiskeysockets/baileys', () => ({
