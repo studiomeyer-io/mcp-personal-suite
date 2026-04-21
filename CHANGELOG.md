@@ -2,6 +2,24 @@
 
 All notable changes to mcp-personal-suite are documented here.
 
+## Unreleased
+
+### Refactor — split the two largest modules along their natural seams
+
+The Analyst cohesion review flagged `src/modules/system/index.ts` (953 LOC)
+and `src/modules/search/index.ts` (873 LOC) as the only two files large
+enough to hide their responsibilities. Each had three distinct concerns
+glued together; split along those concerns so every file owns one thing.
+
+- **`system/index.ts`** 953 → 537 LOC (MCP tool registration only)
+  - **New** `system/setup-builders.ts` (219) — `build{Email,Calendar,Messaging,Search,Image}Config`. Pure arg→config mapping, trivially unit-testable in isolation.
+  - **New** `system/health-checks.ts`  (234) — `check{Email,Calendar,Messaging,Search,Image}Health`. No MCP-server dependency; each function takes a config object and returns a status string.
+- **`search/index.ts`** 873 → 344 LOC (MCP tool registration + jsonResponse / errorResponse helpers, re-exports engine types so external import paths keep working)
+  - **New** `search/engines.ts` (344) — SearXNG + Brave clients, the SSRF-guarded `validateSearxngUrl`, config resolvers (`getConfig` / `getProviderConfig` / `hasAnyEngine` / `hasAnyProvider`), shared result types.
+  - **New** `search/orchestrators.ts` (262) — `doWebSearch` / `doNewsSearch` / `doImageSearch` / `doDeepSearch` + `generateSearchAngles`. Encodes the "which engine, with what fallback" routing policy.
+
+No API changes. All 390 tests + `tsc --noEmit` still green.
+
 ## [0.5.4] - 2026-04-20
 
 ### Added — Supply-Chain Trust Signals
