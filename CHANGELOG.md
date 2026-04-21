@@ -2,6 +2,88 @@
 
 All notable changes to mcp-personal-suite are documented here.
 
+## [0.5.4] - 2026-04-20
+
+### Added — Supply-Chain Trust Signals
+
+After the third agent-code-review pass (which verified the codebase as STABLE)
+this release adds the post-launch trust infrastructure the project had been
+missing for a public npm release.
+
+- **`.github/workflows/publish.yml`** — Automated publish-on-tag workflow.
+  Builds, typechecks, tests, audits, then publishes with `npm publish
+  --provenance`. Uses GitHub Actions OIDC (`id-token: write`) so the
+  attestation is cryptographically signed by GitHub at build time and
+  verifiable via `npm audit signatures`. The job runs inside a GitHub
+  Environment (`npm-publish`) so a human approval gate can be wired in at
+  the repository level without changing the workflow file.
+- **`.github/workflows/scorecard.yml`** — OpenSSF Scorecard analysis
+  weekly plus on every push to `main`. Writes SARIF to the code-scanning
+  tab and publishes the score to the public Scorecard directory. Surfaces
+  branch protection, signed commits, dangerous workflow patterns, and
+  dependency pinning as actionable weaknesses.
+- **README badges** — CI status and OpenSSF Scorecard badge added above
+  the navigation row. `Security` link in the top nav points at
+  [SECURITY.md](./SECURITY.md) for the disclosure policy and threat model.
+- **README Docker volume path** — Corrected to `/home/node/.personal-suite`
+  to match the non-root `USER node` switch added in v0.5.3. Old path
+  `/root/.personal-suite` would have silently failed under the hardened
+  image.
+
+### Changed — Secret Redaction Coverage
+
+`sanitizeSecrets()` in `src/lib/logger.ts` now covers six additional
+provider token shapes. Previous version caught Bearer / sk- / Slack /
+Telegram / AWS / GitHub-PAT / Brave / basic-auth URLs / password= fields.
+New patterns:
+
+- **Anthropic keys** — `sk-ant-…` gets its own match that runs before the
+  generic `sk-` so the "ant-" prefix is preserved in the redaction tag.
+- **Google Cloud keys** — `AIza[0-9A-Za-z_-]{35}` (Gemini, Maps, other GCP).
+- **GitHub OAuth tokens** — `gho_…` (separate from the `ghp_` personal
+  access tokens which were already covered).
+- **Stripe keys** — `sk_live_…`, `rk_test_…`, and the other four Stripe
+  prefix variants matched by `(?:rk|sk)_(?:live|test)_[A-Za-z0-9]{24,}`.
+- **Mailgun API keys** — `key-<32-hex>` (the legacy domain format).
+- **SendGrid keys** — `SG.<22>.<43>` full-length.
+- **Brevo / xkeysib UUID pattern** — any canonical 32-hex UUID gets
+  masked. Broad on purpose — false positives here are cheap.
+
+### Test coverage
+
+- `tests/security.test.ts` — 6 new tests, one per new provider pattern.
+  Total 18 tests in `security.test.ts`, 390 / 390 across the full suite.
+- All secret fixtures are assembled at runtime from fragments
+  (`'xox' + 'b-' + …`) so GitHub Push Protection does not flag the
+  repository on every push.
+
+### Docs
+
+- [SECURITY.md](./SECURITY.md) remains the single source of truth for
+  threat model, supported versions, and 72h / 7d / 14d / 30d response SLAs.
+
+### Notes on what did not change
+
+The third review pass flagged four "HIGH" findings that we investigated
+and chose not to act on:
+
+- **Dockerfile `USER node` position** — report claimed `USER` preceded
+  `RUN npm ci`. It does not (line 31 is after line 25). No change needed.
+- **`setInterval` without cleanup** — both intervals in the codebase are
+  handled: `dual-transport.ts` has `clearInterval` in its SIGINT/SIGTERM
+  shutdown path; `email-client.ts` uses `.unref()` so the interval does
+  not block process exit. No leak under realistic lifetimes.
+- **Prompt-injection via tool outputs** — explicitly out of scope per the
+  threat model in [SECURITY.md](./SECURITY.md). Content returned from
+  configured providers (email body, calendar summary, search snippets)
+  is passed through with structural validation only; defending the
+  downstream LLM is the MCP client's responsibility.
+- **sanitizeSecrets deny-list fundamental unreliability** — correct in
+  principle (no deny-list catches 100% of unknown token shapes), but the
+  suggested alternative (pino `redact`) is field-based and would not help
+  with arbitrary `Error.message` strings from upstream libraries. We add
+  coverage (this release) rather than swap the approach.
+
 ## [0.5.3] - 2026-04-19
 
 ### Security (Round 2 of 3-agent review)
