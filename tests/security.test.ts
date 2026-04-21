@@ -66,6 +66,45 @@ describe('sanitizeSecrets', () => {
     expect(out).not.toContain('topsecret');
   });
 
+  it('redacts Anthropic sk-ant- keys (before the generic sk- pattern)', () => {
+    const input = 'Claude call failed: ' + 'sk-ant-' + 'a'.repeat(40);
+    const out = sanitizeSecrets(input);
+    expect(out).toContain('sk-ant-[REDACTED]');
+    expect(out).not.toContain('a'.repeat(40));
+  });
+
+  it('redacts Google Cloud API keys (AIza…)', () => {
+    const input = 'Gemini error: ' + 'AIza' + 'B'.repeat(35);
+    const out = sanitizeSecrets(input);
+    expect(out).toContain('[GOOGLE_API_KEY_REDACTED]');
+    expect(out).not.toContain('AIza' + 'B'.repeat(35));
+  });
+
+  it('redacts Stripe keys (both live and test)', () => {
+    const liveKey = 'sk' + '_' + 'live_' + 'c'.repeat(30);
+    const testKey = 'rk' + '_' + 'test_' + 'd'.repeat(30);
+    expect(sanitizeSecrets(`Stripe fail: ${liveKey}`)).toContain('[STRIPE_KEY_REDACTED]');
+    expect(sanitizeSecrets(`Stripe fail: ${testKey}`)).toContain('[STRIPE_KEY_REDACTED]');
+  });
+
+  it('redacts Mailgun API keys (key-<hex>)', () => {
+    const input = 'Mailgun 401: ' + 'key-' + 'f'.repeat(32);
+    const out = sanitizeSecrets(input);
+    expect(out).toContain('[MAILGUN_KEY_REDACTED]');
+  });
+
+  it('redacts SendGrid API keys (SG.<22>.<43>)', () => {
+    const input = 'SendGrid: ' + 'SG.' + 'a'.repeat(22) + '.' + 'b'.repeat(43);
+    const out = sanitizeSecrets(input);
+    expect(out).toContain('[SENDGRID_KEY_REDACTED]');
+  });
+
+  it('redacts GitHub OAuth tokens (gho_…)', () => {
+    const input = 'auth: ' + 'gho' + '_' + 'x'.repeat(40);
+    const out = sanitizeSecrets(input);
+    expect(out).toContain('[GITHUB_OAUTH_REDACTED]');
+  });
+
   it('is a no-op on safe log lines', () => {
     const clean = 'Email fetched successfully for user@example.com (42 messages)';
     expect(sanitizeSecrets(clean)).toBe(clean);

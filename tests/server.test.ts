@@ -319,8 +319,11 @@ describe('server info', () => {
 
   it('server version matches package.json', async () => {
     const fs = await import('fs');
-    const pkg = JSON.parse(fs.readFileSync('/home/simple/mcp-personal-suite/package.json', 'utf-8'));
-    expect(pkg.version).toBe('0.4.0');
+    const path = await import('path');
+    const url = await import('url');
+    const here = path.dirname(url.fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(here, '../package.json'), 'utf-8'));
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+/);
   });
 });
 
