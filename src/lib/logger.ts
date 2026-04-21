@@ -22,12 +22,19 @@ const DEBUG = process.env['DEBUG']?.includes('mcp-personal-suite') || process.en
 
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/Bearer\s+[A-Za-z0-9._~+/=-]{16,}/gi, 'Bearer [REDACTED]'],
-  [/sk-[a-zA-Z0-9_-]{20,}/g, 'sk-[REDACTED]'],
-  [/\bxox[baprs]-[A-Za-z0-9-]{10,}/g, 'xox[REDACTED]'],
+  [/sk-ant-[a-zA-Z0-9_-]{20,}/g, 'sk-ant-[REDACTED]'],                      // Anthropic
+  [/sk-[a-zA-Z0-9_-]{20,}/g, 'sk-[REDACTED]'],                              // OpenAI + generic sk- prefix
+  [/\bxox[baprs]-[A-Za-z0-9-]{10,}/g, 'xox[REDACTED]'],                     // Slack
   [/\b\d{9,10}:[A-Za-z0-9_-]{35,}\b/g, '[TELEGRAM_TOKEN_REDACTED]'],
   [/\bAKIA[0-9A-Z]{16}\b/g, '[AWS_KEY_REDACTED]'],
+  [/\bAIza[0-9A-Za-z_-]{35}\b/g, '[GOOGLE_API_KEY_REDACTED]'],              // Google Cloud (AIza…)
   [/\bghp_[A-Za-z0-9]{36,}\b/g, '[GITHUB_TOKEN_REDACTED]'],
+  [/\bgho_[A-Za-z0-9]{36,}\b/g, '[GITHUB_OAUTH_REDACTED]'],                 // GitHub OAuth
   [/\bBSA[A-Za-z0-9_-]{20,}\b/g, '[BRAVE_KEY_REDACTED]'],
+  [/\b(?:rk|sk)_(?:live|test)_[A-Za-z0-9]{24,}\b/g, '[STRIPE_KEY_REDACTED]'],// Stripe
+  [/\bkey-[a-f0-9]{32}\b/gi, '[MAILGUN_KEY_REDACTED]'],                     // Mailgun
+  [/\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b/g, '[SENDGRID_KEY_REDACTED]'], // SendGrid
+  [/\b[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{32}\b/gi, '[BREVO_KEY_REDACTED]'], // Brevo / xkeysib pattern (rough)
   [/password=['"]?[^'"\s&]+/gi, 'password=[REDACTED]'],
   [/:\/\/([^:@/]+):([^@/]+)@/g, '://$1:[REDACTED]@'],
 ];
