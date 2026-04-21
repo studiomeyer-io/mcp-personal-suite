@@ -12,8 +12,10 @@ and any MCP client.
 [![downloads](https://img.shields.io/npm/dm/mcp-personal-suite)](https://www.npmjs.com/package/mcp-personal-suite)
 [![license](https://img.shields.io/npm/l/mcp-personal-suite)](./LICENSE)
 [![node](https://img.shields.io/node/v/mcp-personal-suite)](./package.json)
+[![CI](https://github.com/studiomeyer-io/mcp-personal-suite/actions/workflows/ci.yml/badge.svg)](https://github.com/studiomeyer-io/mcp-personal-suite/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/studiomeyer-io/mcp-personal-suite/badge)](https://scorecard.dev/viewer/?uri=github.com/studiomeyer-io/mcp-personal-suite)
 
-[Quick Start](#quick-start) · [Modules](#49-tools-6-modules) · [Config](#config) · [Privacy](#privacy) · [ECOSYSTEM](./ECOSYSTEM.md)
+[Quick Start](#quick-start) · [Modules](#49-tools-6-modules) · [Config](#config) · [Privacy](#privacy) · [Security](./SECURITY.md) · [ECOSYSTEM](./ECOSYSTEM.md)
 
 </div>
 
@@ -200,7 +202,7 @@ localhost.
 ```bash
 docker build -t personal-suite .
 docker run -d --network host \
-  -v $HOME/.personal-suite:/root/.personal-suite \
+  -v $HOME/.personal-suite:/home/node/.personal-suite \
   -e MCP_HTTP=1 -e MCP_PORT=5120 \
   personal-suite
 ```
