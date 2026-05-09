@@ -6,7 +6,14 @@
 
 # mcp-personal-suite
 
-**Local-first personal productivity MCP server. 49 tools. BYOK. No cloud. No signup.**
+
+<!-- badges -->
+[![npm version](https://img.shields.io/npm/v/mcp-personal-suite?style=flat-square&color=cb3837&logo=npm&label=npm)](https://www.npmjs.com/package/mcp-personal-suite)
+[![npm downloads](https://img.shields.io/npm/dm/mcp-personal-suite?style=flat-square&color=cb3837&logo=npm&label=installs%2Fmo)](https://www.npmjs.com/package/mcp-personal-suite)
+![License](https://img.shields.io/github/license/studiomeyer-io/mcp-personal-suite?style=flat-square&color=22c55e&label=license)
+![Last commit](https://img.shields.io/github/last-commit/studiomeyer-io/mcp-personal-suite?style=flat-square&color=88c0d0&label=updated)
+![GitHub stars](https://img.shields.io/github/stars/studiomeyer-io/mcp-personal-suite?style=flat-square&color=ffd700&logo=github&label=stars)
+<!-- /badges -->**Local-first personal productivity MCP server. 49 tools. BYOK. No cloud. No signup.**
 
 Email, Calendar, Messaging, Search, Image Generation — all in one MCP server,
 running entirely on your machine. Works with Claude Desktop, Claude Code, Cursor,
