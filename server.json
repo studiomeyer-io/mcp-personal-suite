@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.studiomeyer/personal-suite",
+  "title": "StudioMeyer Personal Suite",
+  "description": "Local-first productivity: email, calendar, messaging, search, image gen. 49 tools. BYOK.",
+  "repository": {
+    "url": "https://github.com/studiomeyer-io/mcp-personal-suite",
+    "source": "github"
+  },
+  "version": "0.5.5",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "mcp-personal-suite",
+      "version": "0.5.5",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
