@@ -1,6 +1,6 @@
 {
   "name": "mcp-personal-suite",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "mcpName": "io.studiomeyer/personal-suite",
   "description": "Local-first personal productivity MCP server for Claude, Cursor, and any MCP client. Email, Calendar, Messaging, Search, Image Generation. BYOK, no cloud, no signup.",
   "type": "module",
