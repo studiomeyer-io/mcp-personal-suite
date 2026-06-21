@@ -12,6 +12,7 @@
 
 import { logger } from '../../lib/logger.js';
 import { loadConfig as loadSuiteConfig } from '../../lib/config.js';
+import { isPrivateHostname } from '../../lib/net-guard.js';
 
 // ─── Shared types ────────────────────────────────────
 
@@ -85,19 +86,10 @@ export function validateSearxngUrl(rawUrl: string | undefined): string | undefin
   const hostname = url.hostname.toLowerCase();
   const allowLocal = process.env['SEARXNG_ALLOW_LOCAL'] === '1';
 
-  // Internal / loopback / private ranges
-  const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost');
-  const isIpv6Loopback = hostname === '::1' || hostname === '[::1]';
-  const isPrivate =
-    /^10\./.test(hostname) ||
-    /^192\.168\./.test(hostname) ||
-    /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname) ||
-    /^169\.254\./.test(hostname) || // link-local
-    /^fc[0-9a-f]{2}::/i.test(hostname) || // IPv6 ULA
-    /^fe80::/i.test(hostname) || // IPv6 link-local
-    hostname === '0.0.0.0';
-
-  if ((isLoopback || isIpv6Loopback || isPrivate) && !allowLocal) {
+  // Internal / loopback / private destinations — shared guard catches the
+  // forms a hand-rolled regex misses (IPv6-mapped IPv4 such as
+  // [::ffff:169.254.169.254], decimal/hex/octal IPv4, CGNAT, multicast).
+  if (isPrivateHostname(hostname) && !allowLocal) {
     logger.warn(`[search] SEARXNG_URL rejected: ${hostname} is internal (set SEARXNG_ALLOW_LOCAL=1 to bypass in dev)`);
     return undefined;
   }

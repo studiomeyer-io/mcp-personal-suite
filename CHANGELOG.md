@@ -4,6 +4,53 @@ All notable changes to mcp-personal-suite are documented here.
 
 ## Unreleased
 
+### Security — image_download path traversal + IPv6-mapped IPv4 SSRF bypass
+
+Two holes in defenses the [SECURITY.md](SECURITY.md) threat model already
+claims ("Path traversal on user-supplied filenames", "SSRF on image
+downloads", "probe internal services"). Both are reachable from untrusted
+data: per the threat model, search results / emails / bot messages are
+untrusted, and a prompt-injected assistant can be steered into calling a tool
+with an attacker-chosen `url`. 20 new tests; 439/439 green. No API changes.
+
+- **`image_download` path traversal (FIX).** The local-file branch of
+  `validateDownloadUrl` gated on `rawUrl.startsWith(tempBase)`. A raw,
+  non-normalised string such as
+  `…/personal-suite-images/../../../../etc/passwd` string-prefixes the temp
+  base but resolves to `/etc/passwd`; a sibling directory
+  (`…/personal-suite-images-elsewhere/secret`) also passes. The handler then
+  reads that file and copies it into `~/Downloads/` — arbitrary-file
+  exfiltration. Replaced with a `path.resolve` + `path.relative` containment
+  check (`isWithinDir`) that rejects both traversal and sibling-prefix.
+
+- **IPv6-mapped IPv4 SSRF bypass (FIX).** The private-host checks in both
+  `validateSearxngUrl` (search) and `validateDownloadUrl` (image) matched a
+  regex against `url.hostname`. That misses the IPv6-mapped form:
+  `https://[::ffff:169.254.169.254]/…` normalises to hostname
+  `[::ffff:a9fe:a9fe]`, which `/^169\.254\./` never matched — a clean path to
+  the cloud metadata endpoint. For SearXNG (no allowlist) this was a
+  *reachable* SSRF; for image_download the CDN allowlist contained it, but the
+  check still lied. Decimal/hex/octal IPv4 (`2130706433`, `0x7f000001`) were
+  already safe because the WHATWG URL parser normalises those to dotted-quad.
+
+- **NEW `src/lib/net-guard.ts`** — one shared, tested `isPrivateHostname()`
+  (plus `extractIpv4` / `isPrivateIpv4`) used by both SSRF surfaces, so they
+  can't drift apart again. Covers loopback / `.localhost` / `.local` /
+  `.internal`, all RFC1918 + link-local + CGNAT + multicast/reserved IPv4,
+  IPv6 loopback / ULA / link-local, and IPv6-mapped IPv4 (both dotted and
+  hex-group forms).
+
+- **`inferExtension` hardening.** Wrapped the `new URL(url)` extension lookup
+  in a try/catch so a missing/odd `content-type` on an otherwise successful
+  download falls back to `.png` instead of surfacing an "Invalid URL" crash.
+
+- **Tests** — `tests/net-guard.test.ts` (new, full unit coverage of the
+  guard incl. the metadata bypass), plus regression tests added to
+  `tests/image.test.ts` (raw-string traversal, sibling-prefix, v6-mapped
+  loopback + metadata, content-type-missing extension fallback) and
+  `tests/search.test.ts` (v6-mapped + decimal/hex bypass at the
+  `validateSearxngUrl` level). Each fails against the pre-fix code.
+
 ### Security + Quality — Split-Critic follow-through + five leak shapes (Session 840, 2026-04-21)
 
 The four deferred Session 839 Split-Critic nachbesserungen are now addressed.
