@@ -21,11 +21,12 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { writeFile, mkdir, stat } from 'node:fs/promises';
-import { join, basename, extname } from 'node:path';
+import { join, basename, extname, resolve, relative, isAbsolute, sep } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { logger } from '../../lib/logger.js';
 import { loadConfig as loadSuiteConfig } from '../../lib/config.js';
+import { isPrivateHostname } from '../../lib/net-guard.js';
 import { generateOpenAI, editOpenAI } from './providers/openai.js';
 import { generateFlux } from './providers/flux.js';
 import { generateGemini } from './providers/gemini.js';
@@ -115,6 +116,22 @@ function autoSelectProvider(
   throw new Error('No image provider configured');
 }
 
+// ---- Path containment helper ----
+
+/**
+ * True iff `candidate` resolves to `dir` itself or a path strictly inside it.
+ * Uses path.relative so traversal ("../") and sibling-prefix
+ * ("dir-elsewhere") payloads are both rejected — a plain string startsWith
+ * catches neither.
+ */
+function isWithinDir(dir: string, candidate: string): boolean {
+  const base = resolve(dir);
+  const target = resolve(candidate);
+  if (target === base) return true;
+  const rel = relative(base, target);
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel) && !rel.startsWith(`..${sep}`);
+}
+
 // ---- SSRF Guard ----
 
 /**
@@ -147,7 +164,13 @@ function validateDownloadUrl(rawUrl: string): { type: 'url'; url: string } | { t
   // Local file path (Gemini base64 results)
   if (rawUrl.startsWith('/') || rawUrl.startsWith(tmpdir())) {
     const tempBase = join(tmpdir(), 'personal-suite-images');
-    if (!rawUrl.startsWith(tempBase)) {
+    // Resolve the *real* path before the containment check. A naive
+    // `startsWith(tempBase)` is bypassable two ways: a traversal payload
+    // ("…/personal-suite-images/../../etc/passwd" string-prefixes tempBase
+    // but resolves to /etc/passwd) and a sibling-directory prefix
+    // ("…/personal-suite-images-elsewhere/secret"). Resolve + path.relative
+    // gives a true subtree test. (v0.5.6 path-traversal fix.)
+    if (!isWithinDir(tempBase, rawUrl)) {
       throw new Error(`Local file path not in expected temp directory. Only files from ${tempBase} are allowed.`);
     }
     return { type: 'file', path: rawUrl };
@@ -172,24 +195,11 @@ function validateDownloadUrl(rawUrl: string): { type: 'url'; url: string } | { t
 
   const hostname = url.hostname.toLowerCase();
 
-  // Block private/internal IPs
-  const isPrivate =
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
-    hostname === '::1' ||
-    hostname === '[::1]' ||
-    hostname === '0.0.0.0' ||
-    /^10\./.test(hostname) ||
-    /^192\.168\./.test(hostname) ||
-    /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname) ||
-    /^169\.254\./.test(hostname) ||
-    /^fc[0-9a-f]{2}::/i.test(hostname) ||
-    /^fe80::/i.test(hostname) ||
-    hostname.endsWith('.localhost') ||
-    hostname.endsWith('.local') ||
-    hostname.endsWith('.internal');
-
-  if (isPrivate) {
+  // Block private/internal IPs. Shared guard also catches IPv6-mapped IPv4
+  // (e.g. [::ffff:169.254.169.254]) and decimal/hex/octal IPv4 forms a plain
+  // regex misses. The CDN allowlist below is the primary defense here; this is
+  // defense-in-depth so the error message is precise for private targets.
+  if (isPrivateHostname(hostname)) {
     throw new Error('Download from private/internal addresses is not allowed');
   }
 
@@ -250,9 +260,14 @@ function inferExtension(mimeType: string, url: string): string {
   if (mimeType.includes('gif')) return '.gif';
   if (mimeType.includes('jpeg') || mimeType.includes('jpg')) return '.jpg';
 
-  // From URL
-  const urlExt = extname(new URL(url).pathname).toLowerCase();
-  if (['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(urlExt)) return urlExt;
+  // From URL — guard against a non-URL value so a missing/odd content-type
+  // never turns into an "Invalid URL" crash on an otherwise successful download.
+  try {
+    const urlExt = extname(new URL(url).pathname).toLowerCase();
+    if (['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(urlExt)) return urlExt;
+  } catch {
+    /* not a parseable URL — fall through to default */
+  }
 
   // Default
   return '.png';

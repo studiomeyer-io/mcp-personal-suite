@@ -822,6 +822,157 @@ describe('image_download — SSRF guard', () => {
     expect(result.isError).toBe(true);
     expect(parsed.error).toContain('not in expected temp directory');
   });
+
+  // ── Path-traversal regression (v0.5.6) ────────────────────────────
+  // The old check was `rawUrl.startsWith(tempBase)`, which a "../" payload
+  // string-prefixes while resolving to an arbitrary file. These confirm the
+  // resolve()-based containment check rejects both traversal and sibling-prefix.
+
+  it('should block path traversal out of the temp directory (../)', async () => {
+    const mockServer = createMockServer();
+    const { registerImageTools } = await import('../src/modules/image/index.js');
+    registerImageTools(mockServer as any);
+
+    const handler = mockServer._tools.get('image_download')!.handler;
+    // Raw, NON-normalised string — exactly what an attacker (or a
+    // prompt-injected LLM acting on a malicious search result) would pass.
+    // The old `rawUrl.startsWith(tempBase)` check accepts this string while it
+    // resolves to /etc/passwd. Do not use path.join() here — it would
+    // pre-normalise the "../" away and defeat the point of the test.
+    const evil = `${join(tmpdir(), 'personal-suite-images')}/../../../../etc/passwd`;
+    const result = await handler({ url: evil });
+    const parsed = parseToolResponse(result);
+
+    expect(result.isError).toBe(true);
+    expect(parsed.error).toContain('not in expected temp directory');
+    // It must NOT have read /etc/passwd into a Downloads copy.
+    expect(parsed.path).toBeUndefined();
+    expect(parsed.source).toBeUndefined();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('should block a sibling directory that shares the temp-dir prefix', async () => {
+    const mockServer = createMockServer();
+    const { registerImageTools } = await import('../src/modules/image/index.js');
+    registerImageTools(mockServer as any);
+
+    const handler = mockServer._tools.get('image_download')!.handler;
+    // ".../personal-suite-images-elsewhere/secret" startsWith the old tempBase.
+    const sibling = join(tmpdir(), 'personal-suite-images') + '-elsewhere/secret.png';
+    const result = await handler({ url: sibling });
+    const parsed = parseToolResponse(result);
+
+    expect(result.isError).toBe(true);
+    expect(parsed.error).toContain('not in expected temp directory');
+  });
+
+  it('should still allow a genuine file inside the temp dir after the fix', async () => {
+    // Benign counterpart — the traversal fix must not regress the happy path.
+    const { writeFile, mkdir, unlink } = await import('node:fs/promises');
+    const tempDir = join(tmpdir(), 'personal-suite-images');
+    await mkdir(tempDir, { recursive: true });
+    const tempFile = join(tempDir, 'gemini-benign-after-fix.png');
+    await writeFile(tempFile, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+    const mockServer = createMockServer();
+    const { registerImageTools } = await import('../src/modules/image/index.js');
+    registerImageTools(mockServer as any);
+
+    const handler = mockServer._tools.get('image_download')!.handler;
+    const result = await handler({ url: tempFile, filename: 'benign.png' });
+    const parsed = parseToolResponse(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(parsed.source).toBe('local-copy');
+
+    try { await unlink(tempFile); } catch { /* ignore */ }
+    try { await unlink(parsed.path); } catch { /* ignore */ }
+  });
+
+  // ── IPv6-mapped IPv4 SSRF regression (v0.5.6) ─────────────────────
+
+  it('should block IPv6-mapped IPv4 loopback (bypassed the old regex)', async () => {
+    const mockServer = createMockServer();
+    const { registerImageTools } = await import('../src/modules/image/index.js');
+    registerImageTools(mockServer as any);
+
+    const handler = mockServer._tools.get('image_download')!.handler;
+    const result = await handler({ url: 'https://[::ffff:127.0.0.1]/image.png' });
+    const parsed = parseToolResponse(result);
+
+    expect(result.isError).toBe(true);
+    // Either the private-host guard or (if that ever regresses) the CDN
+    // allowlist must stop it — assert it never reached the network.
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('should block IPv6-mapped cloud metadata address', async () => {
+    const mockServer = createMockServer();
+    const { registerImageTools } = await import('../src/modules/image/index.js');
+    registerImageTools(mockServer as any);
+
+    const handler = mockServer._tools.get('image_download')!.handler;
+    const result = await handler({ url: 'https://[::ffff:169.254.169.254]/latest/meta-data' });
+
+    expect(result.isError).toBe(true);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+// ================================================================
+// inferExtension robustness (v0.5.6) — exercised via image_download
+// ================================================================
+
+describe('image_download — extension inference robustness', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mockFetch.mockReset();
+  });
+
+  it('falls back to .png when content-type is missing (no crash)', async () => {
+    // No content-type header → inferExtension reaches the URL branch.
+    // The URL here has no usable extension, so it must default to .png
+    // rather than throw.
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      headers: new Map() as any, // .get('content-type') -> undefined
+      arrayBuffer: async () => new ArrayBuffer(10),
+    });
+
+    const mockServer = createMockServer();
+    const { registerImageTools } = await import('../src/modules/image/index.js');
+    registerImageTools(mockServer as any);
+
+    const handler = mockServer._tools.get('image_download')!.handler;
+    const result = await handler({
+      url: 'https://v3.fal.media/files/no-extension-here',
+    });
+    const parsed = parseToolResponse(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(parsed.path).toMatch(/\.png$/);
+  });
+
+  it('infers extension from the URL path when content-type is generic', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      headers: new Map([['content-type', 'application/octet-stream']]) as any,
+      arrayBuffer: async () => new ArrayBuffer(10),
+    });
+
+    const mockServer = createMockServer();
+    const { registerImageTools } = await import('../src/modules/image/index.js');
+    registerImageTools(mockServer as any);
+
+    const handler = mockServer._tools.get('image_download')!.handler;
+    const result = await handler({
+      url: 'https://v3.fal.media/files/picture.webp',
+    });
+    const parsed = parseToolResponse(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(parsed.path).toMatch(/\.webp$/);
+  });
 });
 
 // ================================================================

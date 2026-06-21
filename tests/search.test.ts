@@ -140,6 +140,28 @@ describe('registerSearchTools', () => {
     }
   });
 
+  it('SSRF guard: rejects IPv6-mapped IPv4 + decimal/hex IPv4 (v0.5.6 bypass)', async () => {
+    // Tested at the function level for precision — the old hostname regex let
+    // these through (the v6-mapped form normalises to a hostname like
+    // [::ffff:a9fe:a9fe] that /^169\.254\./ never matched).
+    const { validateSearxngUrl } = await import('../src/modules/search/engines.js');
+    vi.stubEnv('SEARXNG_ALLOW_LOCAL', '');
+    const bypassUrls = [
+      'https://[::ffff:127.0.0.1]:8888',          // IPv6-mapped loopback
+      'https://[::ffff:169.254.169.254]/meta',    // IPv6-mapped cloud metadata
+      'https://[::ffff:a9fe:a9fe]/',              // same, hex-group form
+      'http://[::1]:8888',                         // IPv6 loopback
+      'http://2130706433/',                        // decimal 127.0.0.1
+      'http://0x7f000001/',                        // hex 127.0.0.1
+      'http://[fd00::1]/',                          // IPv6 ULA
+    ];
+    for (const url of bypassUrls) {
+      expect(validateSearxngUrl(url), url).toBeUndefined();
+    }
+    // A genuine public host still passes.
+    expect(validateSearxngUrl('https://searx.example.com')).toBe('https://searx.example.com');
+  });
+
   it('search_web + search_news accept engine param in schema', async () => {
     vi.stubEnv('SEARXNG_URL', 'http://localhost:8888');
     vi.stubEnv('SEARXNG_ALLOW_LOCAL', '1');
