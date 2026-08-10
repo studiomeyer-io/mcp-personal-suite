@@ -7,12 +7,12 @@
     "url": "https://github.com/studiomeyer-io/mcp-personal-suite",
     "source": "github"
   },
-  "version": "0.5.5",
+  "version": "0.5.6",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "mcp-personal-suite",
-      "version": "0.5.5",
+      "version": "0.5.6",
       "transport": {
         "type": "stdio"
       }
