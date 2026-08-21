@@ -52,7 +52,8 @@
   "overrides": {
     "protobufjs": "^7.5.5",
     "hono": ">=4.12.18",
-    "fast-uri": ">=3.1.2"
+    "fast-uri": ">=3.1.2",
+    "html-to-text": "^10.0.1"
   },
   "keywords": [
     "mcp",
