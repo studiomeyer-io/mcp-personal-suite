@@ -26,7 +26,48 @@ import { logger } from '../../lib/logger.js';
 
 // ─── HTML-to-Text Fallback ──────────────────────
 
-function stripHtml(html: string): string {
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: ' ',
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+};
+
+/**
+ * Loest EINE Entitaet auf. Bewusst als ein einziger Durchgang ueber den
+ * ganzen String verwendet: die frueheren, aufeinanderfolgenden `.replace`
+ * fuer `&amp;`, `&lt;` und `&gt;` haben doppelt kodierten Text in ZWEI
+ * Schritten aufgeloest. Aus `&amp;lt;script&amp;gt;` wurde so echtes
+ * `<script>` — die Funktion hat also HTML wiederhergestellt, das der
+ * Tag-Filter eine Zeile darueber gerade entfernt hatte. Live nachgestellt,
+ * auch mit `&amp;#60;`. In einem Durchgang kann das nicht passieren, weil
+ * jede Entitaet genau einmal ersetzt wird und ihr Ergebnis nicht noch
+ * einmal betrachtet wird.
+ */
+function decodeEntity(match: string, name: string): string {
+  const key = name.toLowerCase();
+  let code: number | undefined;
+  if (key.startsWith('#x')) code = Number.parseInt(key.slice(2), 16);
+  else if (key.startsWith('#')) code = Number.parseInt(key.slice(1), 10);
+  if (code !== undefined) {
+    if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return match;
+    try {
+      return String.fromCodePoint(code);
+    } catch {
+      return match;
+    }
+  }
+  return NAMED_ENTITIES[key] ?? match;
+}
+
+/**
+ * Wandelt HTML in lesbaren Text um, als Rueckfallebene wenn eine Mail keine
+ * Text-Fassung mitbringt. Das ist KEINE Bereinigung fuer eine HTML-Ausgabe:
+ * wer das Ergebnis wieder als HTML rendert, muss es dort selbst entschaerfen.
+ */
+export function stripHtml(html: string): string {
   return html
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n\n')
@@ -35,21 +76,13 @@ function stripHtml(html: string): string {
     .replace(/<li[^>]*>/gi, '- ')
     .replace(/<\/h[1-6]>/gi, '\n\n')
     .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&#x27;/gi, "'")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, decodeEntity)
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
 /** Escape HTML special characters to prevent XSS in generated HTML */
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -63,7 +96,7 @@ function escapeHtml(text: string): string {
 const ALLOWED_ATTACHMENT_DIRS = ['/tmp/', '/home/', '/var/tmp/'];
 const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024; // 25MB
 
-function validateAttachmentPath(filePath: string): { valid: boolean; error?: string } {
+export function validateAttachmentPath(filePath: string): { valid: boolean; error?: string } {
   try {
     const resolved = realpathSync(resolve(filePath));
     const allowed = ALLOWED_ATTACHMENT_DIRS.some(dir => resolved.startsWith(dir));

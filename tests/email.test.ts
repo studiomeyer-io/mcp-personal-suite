@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { stripHtml, escapeHtml, validateAttachmentPath } from '../src/modules/email/email-client.js';
 
 // ─── Mock external deps BEFORE imports ─────────────────
 
@@ -410,41 +411,13 @@ describe('OAuth2 Config', () => {
 // Actually, let's directly test the functions by extracting them.
 
 describe('Email Client Helpers', () => {
-  // We replicate the helper functions here for unit testing
-  // since they are not exported from email-client.ts
+  // Fruehere Fassung: die Helfer waren nicht exportiert, also standen hier
+  // KOPIEN ihres Codes. Ein Test, der eine Kopie prueft, prueft nichts: als
+  // stripHtml in der Quelle wegen doppelter Entitaets-Aufloesung korrigiert
+  // wurde, haette diese Datei den alten Stand weiter gruen gemeldet. Die
+  // Helfer sind jetzt exportiert und werden von hier importiert.
 
-  function stripHtml(html: string): string {
-    return html
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/p>/gi, '\n\n')
-      .replace(/<\/div>/gi, '\n')
-      .replace(/<\/li>/gi, '\n')
-      .replace(/<li[^>]*>/gi, '- ')
-      .replace(/<\/h[1-6]>/gi, '\n\n')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&amp;/gi, '&')
-      .replace(/&lt;/gi, '<')
-      .replace(/&gt;/gi, '>')
-      .replace(/&quot;/gi, '"')
-      .replace(/&#39;/gi, "'")
-      .replace(/&#x27;/gi, "'")
-      .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code)))
-      .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-  }
-
-  function escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
-  describe('stripHtml', () => {
+describe('stripHtml', () => {
     it('should convert <br> tags to newlines', () => {
       expect(stripHtml('Hello<br>World')).toBe('Hello\nWorld');
       expect(stripHtml('Hello<br/>World')).toBe('Hello\nWorld');
@@ -505,6 +478,31 @@ describe('Email Client Helpers', () => {
     });
   });
 
+  describe('stripHtml — Regressionen aus dem CodeQL-Lauf', () => {
+    // Regressionstest zum CodeQL-Fund js/double-escaping und
+    // js/incomplete-multi-character-sanitization: die frueheren, nacheinander
+    // laufenden `.replace` haben `&amp;` VOR `&lt;` aufgeloest. Doppelt
+    // kodierter Text wurde dadurch in zwei Schritten entschaerft, und aus
+    // `&amp;lt;script&amp;gt;` entstand echtes `<script>` — die Funktion
+    // stellte also HTML wieder her, das der Tag-Filter gerade entfernt hatte.
+    it('stellt aus doppelt kodiertem Text kein HTML wieder her', () => {
+      expect(stripHtml('<p>&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;</p>'))
+        .toBe('&lt;script&gt;alert(1)&lt;/script&gt;');
+      expect(stripHtml('&amp;#60;script&amp;#62;')).toBe('&#60;script&#62;');
+      expect(stripHtml('&amp;amp;lt;img src=x&amp;amp;gt;')).toBe('&amp;lt;img src=x&amp;gt;');
+    });
+
+    it('loest jede Entitaet genau einmal auf', () => {
+      expect(stripHtml('a&nbsp;b &amp; c')).toBe('a b & c');
+      expect(stripHtml('&#8364; &#x1F600;')).toBe('\u20AC \u{1F600}');
+      expect(stripHtml('&quot;x&quot; &apos;y&apos;')).toBe('"x" \'y\'');
+    });
+
+    it('laesst unbekannte und unsinnige Entitaeten stehen, statt zu stuerzen', () => {
+      expect(stripHtml('&foobar; &#999999999; &#xZZZ;')).toBe('&foobar; &#999999999; &#xZZZ;');
+    });
+  });
+
   describe('escapeHtml', () => {
     it('should escape ampersand', () => {
       expect(escapeHtml('A & B')).toBe('A &amp; B');
@@ -536,28 +534,8 @@ describe('Email Client Helpers', () => {
   });
 
   describe('validateAttachmentPath', () => {
-    // We test through actual filesystem operations
-    const ALLOWED_ATTACHMENT_DIRS = ['/tmp/', '/home/', '/var/tmp/'];
-    const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024;
-
-    function validateAttachmentPath(filePath: string): { valid: boolean; error?: string } {
-      try {
-        const { realpathSync, statSync } = require('node:fs');
-        const { resolve } = require('node:path');
-        const resolved = realpathSync(resolve(filePath));
-        const allowed = ALLOWED_ATTACHMENT_DIRS.some((dir: string) => resolved.startsWith(dir));
-        if (!allowed) {
-          return { valid: false, error: `Path not in allowed directories: ${resolved}` };
-        }
-        const stats = statSync(resolved);
-        if (stats.size > MAX_ATTACHMENT_SIZE) {
-          return { valid: false, error: `File too large: ${(stats.size / 1024 / 1024).toFixed(1)}MB (max 25MB)` };
-        }
-        return { valid: true };
-      } catch {
-        return { valid: false, error: `File not found: ${filePath}` };
-      }
-    }
+    // Auch hier stand eine Kopie der Funktion. Sie wird jetzt aus dem Modul
+    // importiert, damit dieser Test die echte Pruefung misst.
 
     it('should accept valid file in /tmp', () => {
       const dir = createTmpDir();
