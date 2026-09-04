@@ -4,6 +4,49 @@ All notable changes to mcp-personal-suite are documented here.
 
 ## Unreleased
 
+### Security: stripHtml rebuilt the HTML it was meant to strip
+
+CodeQL flagged this twice in one place (`js/double-escaping`,
+`js/incomplete-multi-character-sanitization`), both high. The finding is real
+and was reproduced before the change.
+
+- **Entities were decoded in two passes.** The chain resolved `&amp;` *before*
+  `&lt;` and `&gt;`, so a double-encoded input was unescaped twice:
+  `&amp;lt;script&amp;gt;` came out as a literal `<script>`, and
+  `&amp;#60;script&amp;#62;` did the same. The function therefore rebuilt HTML
+  that the tag filter had removed one line earlier. A single pass now resolves
+  each entity exactly once, so a second round cannot happen. It also survives
+  nonsensical codes (`&#999999999;`, `&#xZZZ;`) instead of tripping over
+  `fromCharCode`.
+
+  For the record: `stripHtml` produces the **text** rendition of a message
+  (field `textBody`). It is not a sanitiser for HTML output, and the raw HTML
+  travels alongside it untouched as `htmlBody`. The doc comment now says so.
+
+- **The test suite was checking a copy of the code.** `stripHtml`, `escapeHtml`
+  and `validateAttachmentPath` were not exported, so `tests/email.test.ts`
+  carried duplicates of their bodies. That is why CodeQL reported every finding
+  twice. A test that checks a copy checks nothing: it would have stayed green
+  after this fix without ever seeing the corrected code. All three helpers are
+  now exported and imported by the test; both copies are gone.
+
+  Three regression tests cover the case. Verified by mutation: with the old
+  chain in place exactly those three fail (3 failed | 53 passed), with the new
+  one all 56 pass. 442 tests green overall.
+
+### Build
+
+- **The Dockerfile could never be built, since the day it was added.**
+  `.dockerignore` excluded `tsconfig.json` while the Dockerfile ran
+  `COPY tsconfig.json ./`. Both files arrived in the same commit (`e6c52eb`).
+  Nothing noticed because no workflow builds the image and `server.json`
+  advertises only the npm package. Fixed; `docker build` now completes (768 MB,
+  node v22.23.2 inside).
+- **Base image pinned by digest**, and `dependabot.yml` now also covers the
+  `docker` ecosystem so the digest does not silently go stale. Major version
+  bumps of `node` are ignored there: the CI tests on Node 20 and 22, and the
+  first automated suggestion was a jump to Node 26.
+
 ### Security — image_download path traversal + IPv6-mapped IPv4 SSRF bypass
 
 Two holes in defenses the [SECURITY.md](SECURITY.md) threat model already
