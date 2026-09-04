@@ -48,3 +48,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # Digest-Updates innerhalb von node:22 sind erwuenscht, ein Sprung auf
+      # die naechste Hauptversion nicht: die CI prueft auf Node 20 und 22.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
