@@ -14,7 +14,6 @@ coverage
 tests
 *.test.ts
 vitest.config.ts
-tsconfig.json
 CHANGELOG.md
 ECOSYSTEM.md
 README.md

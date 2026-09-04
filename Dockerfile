@@ -6,7 +6,7 @@
 #           -e MCP_HTTP=1 -e MCP_PORT=5120 \
 #           personal-suite
 
-FROM node:22-slim AS builder
+FROM node:22-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS builder
 
 WORKDIR /app
 COPY package.json package-lock.json* ./
@@ -16,7 +16,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
-FROM node:22-slim
+FROM node:22-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
 
 WORKDIR /app
 ENV NODE_ENV=production
