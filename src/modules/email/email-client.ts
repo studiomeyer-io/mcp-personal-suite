@@ -12,7 +12,7 @@
 import { ImapFlow } from 'imapflow';
 import { simpleParser, type ParsedMail } from 'mailparser';
 import nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
+import type { SendMailOptions, TransportOptions, Transporter } from 'nodemailer';
 import { realpathSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
@@ -504,7 +504,7 @@ async function getTransporter(): Promise<Transporter> {
         user: smtpCfg.user,
         accessToken,
       },
-    } as nodemailer.TransportOptions);
+    } as TransportOptions);
   }
 
   const cacheKey = '_default';
@@ -537,7 +537,7 @@ export async function sendEmail(input: SendInput): Promise<SendResult> {
 
     const transporter = await getTransporter();
 
-    const mailOptions: nodemailer.SendMailOptions = {
+    const mailOptions: SendMailOptions = {
       from: input.from ?? config.email,
       to: input.to,
       cc: input.cc,
