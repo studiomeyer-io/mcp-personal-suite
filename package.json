@@ -37,14 +37,13 @@
     "grammy": "^1.41.0",
     "imapflow": "^1.2.18",
     "mailparser": "^3.9.4",
-    "nodemailer": "^9.0.3",
+    "nodemailer": "^10.0.9",
     "ts-caldav": "^0.4.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/mailparser": "^3.4.5",
     "@types/node": "^25.6.0",
-    "@types/nodemailer": "^8.0.0",
     "tsx": "^4.0.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.4"
