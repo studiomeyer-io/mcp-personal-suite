@@ -29,7 +29,7 @@
     "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@slack/bolt": "^4.6.0",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "discord.js": "^14.0.0",
@@ -39,7 +39,8 @@
     "mailparser": "^3.9.4",
     "nodemailer": "^10.0.9",
     "ts-caldav": "^0.4.0",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@types/mailparser": "^3.4.5",
@@ -50,8 +51,8 @@
   },
   "overrides": {
     "protobufjs": "^7.5.5",
-    "hono": ">=4.12.18",
-    "fast-uri": "^3.1.7",
+    "hono": "^4.13.13",
+    "fast-uri": "^3.1.8",
     "html-to-text": "^10.0.1"
   },
   "keywords": [
