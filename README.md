@@ -59,6 +59,16 @@ Messaging uses your own bot tokens (BotFather for Telegram, Discord developer
 portal, Slack app, etc.). Email uses Gmail/Outlook OAuth or plain IMAP with
 auto-discovery for 30,000+ providers.
 
+## Package contents and maintenance
+
+Version 0.5.7 includes the dependency bundle described below.
+
+The package ships googleapis and its pinned dependency closure through bundledDependencies. A root-only npm override does not constrain an installed package's dependency tree; the included closure carries the checked versions to consumers. No third-party manifest range, source file or package version is modified in this googleapis bundle. The archive discloses its bundled roots and lockfile digest in dist/bundled-dependencies.json.
+
+The measured archive is approximately **18.65 MB compressed and 212.6 MB unpacked** (decimal MB). Bundling increases download and disk use; a security update to an included dependency requires an updated package archive.
+
+For maintenance, run npm ci and npm run test:consumer from the repository checkout. npm pack runs prepack automatically: it builds the package and prepares the declared bundle. The consumer check packs twice, verifies identical bytes, installs the actual archive in a fresh project, checks npm ls and both dependency audits, and exercises the installed CLI or runtime. Review dependency updates together with the locked bundle and license proofs before distributing a new archive. The archive's dist/bundled-dependencies.json records the bundle and manifest adjustments.
+
 ## Quick Start
 
 ```bash
@@ -258,3 +268,5 @@ docker run -d --network host \
 ## License
 
 [MIT](./LICENSE). Built by [StudioMeyer](https://studiomeyer.io).
+
+Bundled dependencies retain their complete upstream license texts in the archive. The package license applies to this project's own code; bundled third-party packages retain their respective terms. The consumer check verifies each approved package version's full license file, or its complete README license section, against pinned content hashes from integrity-verified official npm artifacts. Whitespace and line-ending differences are accepted; missing, empty or partial legal text is rejected.
