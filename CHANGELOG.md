@@ -9,6 +9,7 @@ All notable changes to mcp-personal-suite are documented here.
 
 - Bundle googleapis and its pinned dependency closure so fresh consumers receive the checked tree rather than resolving the older vulnerable transitive branch. This changes package distribution, not the suite tool API.
 - Run build and deterministic bundle preparation in prepack. Include dist/bundled-dependencies.json with bundled roots, lockfile digest and an empty manifest-adjustment list; no third-party source/version/range edits are made for this bundle.
+- Skip a duplicate npm publish when the tag workflow finds that the exact package version is already published. Existing build, test and audit steps still run.
 - Preserve full upstream legal text for all 45 bundled package instances. Check actual tarball payloads against approved version-specific full-text hashes from official integrity-verified npm archives, including complete README license sections where applicable. Whitespace-only differences are accepted; 5 missing/empty/partial-license regression cases fail as intended.
 - The checked Node 20/22 runs pass 442 tests per runtime. Two fresh installed consumers have consistent npm ls trees and zero findings in all-dependency/production audits. Repeated packs and Node 20/22 archive bytes match for the checked inputs.
 - Measured archive size: approximately 18.65 MB compressed / 212.6 MB unpacked. This bundle is larger because it includes its selected dependency closure.

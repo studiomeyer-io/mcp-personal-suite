@@ -59,7 +59,20 @@ jobs:
           done
           echo "::warning::npm audit uebersprungen, der Endpunkt war dreimal nicht erreichbar."
 
+      - name: Check whether the version is already published
+        id: npmcheck
+        run: |
+          package_name=$(node -p "require('./package.json').name")
+          package_version=$(node -p "require('./package.json').version")
+          if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$package_name@$package_version is already published."
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: publish with provenance
+        if: steps.npmcheck.outputs.already == 'false'
         run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
